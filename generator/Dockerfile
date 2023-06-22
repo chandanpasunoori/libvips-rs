@@ -1,4 +1,4 @@
-# (c) Copyright 2019-2023 OLX
+# (c) Copyright 2019-2023 MIT
 FROM rust:1.66.0-alpine3.17
 
 ENV VIPS_VERSION=8.14.2

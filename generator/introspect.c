@@ -1,4 +1,4 @@
-// (c) Copyright 2019-2023 OLX
+// (c) Copyright 2019-2023 MIT
 /* vips8 introspection
  *
  * compile with:

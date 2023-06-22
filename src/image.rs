@@ -1,4 +1,4 @@
-// (c) Copyright 2019-2023 OLX
+// (c) Copyright 2019-2023 MIT
 use crate::bindings;
 use crate::error::Error;
 use crate::ops::*;
