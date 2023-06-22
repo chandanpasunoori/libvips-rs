@@ -1,9 +1,9 @@
 # (c) Copyright 2019-2023 MIT
-FROM rust:1.66.0-alpine3.17
+FROM rust:1.70-alpine3.18
 
 ENV VIPS_VERSION=8.14.2
 
-RUN apk add --update --no-cache --repository=https://dl-cdn.alpinelinux.org/alpine/v3.17/main \
+RUN apk add --update --no-cache --repository=https://dl-cdn.alpinelinux.org/alpine/v3.18/main \
             build-base \
             pkgconfig \
             clang \

@@ -1,6 +1,6 @@
 # (c) Copyright 2019-2023 MIT
 [package]
-name = "libvips-rs"
+name = "libvips_rs"
 description = "Safe bindings for libvips"
 version = "8.14.2"
 authors = ["Chandan Pasunoori <chandanpasunoori@gmail.com>"]

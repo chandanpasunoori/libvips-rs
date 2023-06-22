@@ -9,7 +9,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d49d90015b3c36167a20fe2810c5cd875ad504b39cff3d4eae7977e6b7c1cb2"
 
 [[package]]
-name = "libvips-rs"
+name = "libvips_rs"
 version = "8.14.2"
 dependencies = [
  "num-derive",
