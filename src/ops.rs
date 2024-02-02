@@ -331,6 +331,40 @@ pub enum ForeignHeifCompression {
 }
 
 #[derive(Copy, Clone, Debug, FromPrimitive, ToPrimitive)]
+pub enum ForeignHeifEncoder {
+    ///  `Auto` -> VIPS_FOREIGN_HEIF_ENCODER_AUTO = 0
+    Auto = 0,
+    ///  `Aom` -> VIPS_FOREIGN_HEIF_ENCODER_AOM = 1
+    Aom = 1,
+    ///  `Rav1E` -> VIPS_FOREIGN_HEIF_ENCODER_RAV1E = 2
+    Rav1E = 2,
+    ///  `Svt` -> VIPS_FOREIGN_HEIF_ENCODER_SVT = 3
+    Svt = 3,
+    ///  `X265` -> VIPS_FOREIGN_HEIF_ENCODER_X265 = 4
+    X265 = 4,
+    ///  `Last` -> VIPS_FOREIGN_HEIF_ENCODER_LAST = 5
+    Last = 5,
+}
+
+#[derive(Copy, Clone, Debug, FromPrimitive, ToPrimitive)]
+pub enum ForeignKeep {
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    None = 0,
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    Exif = 1,
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    Xmp = 2,
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    Iptc = 4,
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    Icc = 8,
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    Other = 16,
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31
+    All = 31,
+}
+
+#[derive(Copy, Clone, Debug, FromPrimitive, ToPrimitive)]
 pub enum ForeignPngFilter {
     ///  `None` -> VIPS_FOREIGN_PNG_FILTER_NONE = 8
     None = 8,
@@ -356,8 +390,10 @@ pub enum ForeignPpmFormat {
     Ppm = 2,
     ///  `Pfm` -> VIPS_FOREIGN_PPM_FORMAT_PFM = 3
     Pfm = 3,
-    ///  `Last` -> VIPS_FOREIGN_PPM_FORMAT_LAST = 4
-    Last = 4,
+    ///  `Pnm` -> VIPS_FOREIGN_PPM_FORMAT_PNM = 4
+    Pnm = 4,
+    ///  `Last` -> VIPS_FOREIGN_PPM_FORMAT_LAST = 5
+    Last = 5,
 }
 
 #[derive(Copy, Clone, Debug, FromPrimitive, ToPrimitive)]
@@ -721,6 +757,20 @@ pub enum Size {
     ///  `Force` -> VIPS_SIZE_FORCE = 3
     Force = 3,
     ///  `Last` -> VIPS_SIZE_LAST = 4
+    Last = 4,
+}
+
+#[derive(Copy, Clone, Debug, FromPrimitive, ToPrimitive)]
+pub enum TextWrap {
+    ///  `Word` -> VIPS_TEXT_WRAP_WORD = 0
+    Word = 0,
+    ///  `Char` -> VIPS_TEXT_WRAP_CHAR = 1
+    Char = 1,
+    ///  `WordChar` -> VIPS_TEXT_WRAP_WORD_CHAR = 2
+    WordChar = 2,
+    ///  `None` -> VIPS_TEXT_WRAP_NONE = 3
+    None = 3,
+    ///  `Last` -> VIPS_TEXT_WRAP_LAST = 4
     Last = 4,
 }
 
@@ -2140,6 +2190,9 @@ pub struct FindTrimOptions {
     pub threshold: f64,
     /// background: `Vec<f64>` -> Color for background pixels
     pub background: Vec<f64>,
+    /// line_art: `bool` -> Enable line art mode
+    /// default: false
+    pub line_art: bool,
 }
 
 impl std::default::Default for FindTrimOptions {
@@ -2147,6 +2200,7 @@ impl std::default::Default for FindTrimOptions {
         FindTrimOptions {
             threshold: f64::from(10),
             background: Vec::new(),
+            line_art: false,
         }
     }
 }
@@ -2179,6 +2233,9 @@ pub fn find_trim_with_opts(
         let background_in = background_wrapper.ctx;
         let background_in_name = utils::new_c_string("background")?;
 
+        let line_art_in: i32 = if find_trim_options.line_art { 1 } else { 0 };
+        let line_art_in_name = utils::new_c_string("line-art")?;
+
         let vips_op_response = bindings::vips_find_trim(
             inp_in,
             &mut left_out,
@@ -2189,6 +2246,8 @@ pub fn find_trim_with_opts(
             threshold_in,
             background_in_name.as_ptr(),
             background_in,
+            line_art_in_name.as_ptr(),
+            line_art_in,
             NULL,
         );
         utils::result(
@@ -3410,6 +3469,12 @@ pub fn smartcrop(input: &VipsImage, width: i32, height: i32) -> Result<VipsImage
 /// Options for smartcrop operation
 #[derive(Clone, Debug)]
 pub struct SmartcropOptions {
+    /// attention_x: `i32` -> Horizontal position of attention centre
+    /// min: 0, max: 10000000, default: 0
+    pub attention_x: i32,
+    /// attention_y: `i32` -> Vertical position of attention centre
+    /// min: 0, max: 10000000, default: 0
+    pub attention_y: i32,
     /// interesting: `Interesting` -> How to measure interestingness
     ///  `None` -> VIPS_INTERESTING_NONE = 0
     ///  `Centre` -> VIPS_INTERESTING_CENTRE = 1
@@ -3420,12 +3485,18 @@ pub struct SmartcropOptions {
     ///  `All` -> VIPS_INTERESTING_ALL = 6
     ///  `Last` -> VIPS_INTERESTING_LAST = 7
     pub interesting: Interesting,
+    /// premultiplied: `bool` -> Input image already has premultiplied alpha
+    /// default: false
+    pub premultiplied: bool,
 }
 
 impl std::default::Default for SmartcropOptions {
     fn default() -> Self {
         SmartcropOptions {
+            attention_x: i32::from(0),
+            attention_y: i32::from(0),
             interesting: Interesting::Attention,
+            premultiplied: false,
         }
     }
 }
@@ -3450,16 +3521,35 @@ pub fn smartcrop_with_opts(
         let height_in: i32 = height;
         let mut out_out: *mut bindings::VipsImage = null_mut();
 
+        let attention_x_in: i32 = smartcrop_options.attention_x;
+        let attention_x_in_name = utils::new_c_string("attention-x")?;
+
+        let attention_y_in: i32 = smartcrop_options.attention_y;
+        let attention_y_in_name = utils::new_c_string("attention-y")?;
+
         let interesting_in: i32 = smartcrop_options.interesting as i32;
         let interesting_in_name = utils::new_c_string("interesting")?;
+
+        let premultiplied_in: i32 = if smartcrop_options.premultiplied {
+            1
+        } else {
+            0
+        };
+        let premultiplied_in_name = utils::new_c_string("premultiplied")?;
 
         let vips_op_response = bindings::vips_smartcrop(
             input_in,
             &mut out_out,
             width_in,
             height_in,
+            attention_x_in_name.as_ptr(),
+            attention_x_in,
+            attention_y_in_name.as_ptr(),
+            attention_y_in,
             interesting_in_name.as_ptr(),
             interesting_in,
+            premultiplied_in_name.as_ptr(),
+            premultiplied_in,
             NULL,
         );
         utils::result(
@@ -5667,23 +5757,30 @@ pub struct TextOptions {
     ///  `High` -> VIPS_ALIGN_HIGH = 2
     ///  `Last` -> VIPS_ALIGN_LAST = 3
     pub align: Align,
-    /// rgba: `bool` -> Enable RGBA output
-    /// default: false
-    pub rgba: bool,
-    /// dpi: `i32` -> DPI to render at
-    /// min: 1, max: 1000000, default: 72
-    pub dpi: i32,
     /// justify: `bool` -> Justify lines
     /// default: false
     pub justify: bool,
+    /// dpi: `i32` -> DPI to render at
+    /// min: 1, max: 1000000, default: 72
+    pub dpi: i32,
     /// autofit_dpi: `i32` -> DPI selected by autofit
     /// min: 1, max: 1000000, default: 72
     pub autofit_dpi: i32,
     /// spacing: `i32` -> Line spacing
-    /// min: 0, max: 1000000, default: 0
+    /// min: -1000000, max: 1000000, default: 0
     pub spacing: i32,
     /// fontfile: `String` -> Load this font file
     pub fontfile: String,
+    /// rgba: `bool` -> Enable RGBA output
+    /// default: false
+    pub rgba: bool,
+    /// wrap: `TextWrap` -> Wrap lines on word or character boundaries
+    ///  `Word` -> VIPS_TEXT_WRAP_WORD = 0 [DEFAULT]
+    ///  `Char` -> VIPS_TEXT_WRAP_CHAR = 1
+    ///  `WordChar` -> VIPS_TEXT_WRAP_WORD_CHAR = 2
+    ///  `None` -> VIPS_TEXT_WRAP_NONE = 3
+    ///  `Last` -> VIPS_TEXT_WRAP_LAST = 4
+    pub wrap: TextWrap,
 }
 
 impl std::default::Default for TextOptions {
@@ -5693,12 +5790,13 @@ impl std::default::Default for TextOptions {
             width: i32::from(0),
             height: i32::from(0),
             align: Align::Low,
-            rgba: false,
-            dpi: i32::from(72),
             justify: false,
+            dpi: i32::from(72),
             autofit_dpi: i32::from(72),
             spacing: i32::from(0),
             fontfile: String::new(),
+            rgba: false,
+            wrap: TextWrap::Word,
         }
     }
 }
@@ -5724,14 +5822,11 @@ pub fn text_with_opts(text: &str, text_options: &TextOptions) -> Result<VipsImag
         let align_in: i32 = text_options.align as i32;
         let align_in_name = utils::new_c_string("align")?;
 
-        let rgba_in: i32 = if text_options.rgba { 1 } else { 0 };
-        let rgba_in_name = utils::new_c_string("rgba")?;
+        let justify_in: i32 = if text_options.justify { 1 } else { 0 };
+        let justify_in_name = utils::new_c_string("justify")?;
 
         let dpi_in: i32 = text_options.dpi;
         let dpi_in_name = utils::new_c_string("dpi")?;
-
-        let justify_in: i32 = if text_options.justify { 1 } else { 0 };
-        let justify_in_name = utils::new_c_string("justify")?;
 
         let autofit_dpi_in: i32 = text_options.autofit_dpi;
         let autofit_dpi_in_name = utils::new_c_string("autofit-dpi")?;
@@ -5741,6 +5836,12 @@ pub fn text_with_opts(text: &str, text_options: &TextOptions) -> Result<VipsImag
 
         let fontfile_in: CString = utils::new_c_string(&text_options.fontfile)?;
         let fontfile_in_name = utils::new_c_string("fontfile")?;
+
+        let rgba_in: i32 = if text_options.rgba { 1 } else { 0 };
+        let rgba_in_name = utils::new_c_string("rgba")?;
+
+        let wrap_in: i32 = text_options.wrap as i32;
+        let wrap_in_name = utils::new_c_string("wrap")?;
 
         let vips_op_response = bindings::vips_text(
             &mut out_out,
@@ -5753,18 +5854,20 @@ pub fn text_with_opts(text: &str, text_options: &TextOptions) -> Result<VipsImag
             height_in,
             align_in_name.as_ptr(),
             align_in,
-            rgba_in_name.as_ptr(),
-            rgba_in,
-            dpi_in_name.as_ptr(),
-            dpi_in,
             justify_in_name.as_ptr(),
             justify_in,
+            dpi_in_name.as_ptr(),
+            dpi_in,
             autofit_dpi_in_name.as_ptr(),
             autofit_dpi_in,
             spacing_in_name.as_ptr(),
             spacing_in,
             fontfile_in_name.as_ptr(),
             fontfile_in.as_ptr(),
+            rgba_in_name.as_ptr(),
+            rgba_in,
+            wrap_in_name.as_ptr(),
+            wrap_in,
             NULL,
         );
         utils::result(
@@ -8070,6 +8173,9 @@ pub struct CsvloadOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for CsvloadOptions {
@@ -8083,6 +8189,7 @@ impl std::default::Default for CsvloadOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
@@ -8120,6 +8227,9 @@ pub fn csvload_with_opts(filename: &str, csvload_options: &CsvloadOptions) -> Re
         let fail_on_in: i32 = csvload_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if csvload_options.revalidate { 1 } else { 0 };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_csvload(
             filename_in.as_ptr(),
             &mut out_out,
@@ -8139,6 +8249,8 @@ pub fn csvload_with_opts(filename: &str, csvload_options: &CsvloadOptions) -> Re
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
@@ -8202,6 +8314,9 @@ pub struct CsvloadSourceOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for CsvloadSourceOptions {
@@ -8215,6 +8330,7 @@ impl std::default::Default for CsvloadSourceOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
@@ -8255,6 +8371,13 @@ pub fn csvload_source_with_opts(
         let fail_on_in: i32 = csvload_source_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if csvload_source_options.revalidate {
+            1
+        } else {
+            0
+        };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_csvload_source(
             source_in,
             &mut out_out,
@@ -8274,6 +8397,8 @@ pub fn csvload_source_with_opts(
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
@@ -8327,6 +8452,9 @@ pub struct MatrixloadOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for MatrixloadOptions {
@@ -8336,6 +8464,7 @@ impl std::default::Default for MatrixloadOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
@@ -8364,6 +8493,9 @@ pub fn matrixload_with_opts(
         let fail_on_in: i32 = matrixload_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if matrixload_options.revalidate { 1 } else { 0 };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_matrixload(
             filename_in.as_ptr(),
             &mut out_out,
@@ -8375,6 +8507,8 @@ pub fn matrixload_with_opts(
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
@@ -8428,6 +8562,9 @@ pub struct MatrixloadSourceOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for MatrixloadSourceOptions {
@@ -8437,6 +8574,7 @@ impl std::default::Default for MatrixloadSourceOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
@@ -8469,6 +8607,13 @@ pub fn matrixload_source_with_opts(
         let fail_on_in: i32 = matrixload_source_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if matrixload_source_options.revalidate {
+            1
+        } else {
+            0
+        };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_matrixload_source(
             source_in,
             &mut out_out,
@@ -8480,6 +8625,8 @@ pub fn matrixload_source_with_opts(
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
@@ -8589,6 +8736,9 @@ pub struct RawloadOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for RawloadOptions {
@@ -8601,6 +8751,7 @@ impl std::default::Default for RawloadOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
@@ -8650,6 +8801,9 @@ pub fn rawload_with_opts(
         let fail_on_in: i32 = rawload_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if rawload_options.revalidate { 1 } else { 0 };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_rawload(
             filename_in.as_ptr(),
             &mut out_out,
@@ -8670,6 +8824,8 @@ pub fn rawload_with_opts(
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
@@ -8723,6 +8879,9 @@ pub struct VipsloadOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for VipsloadOptions {
@@ -8732,6 +8891,7 @@ impl std::default::Default for VipsloadOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
@@ -8757,6 +8917,9 @@ pub fn vipsload_with_opts(filename: &str, vipsload_options: &VipsloadOptions) ->
         let fail_on_in: i32 = vipsload_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if vipsload_options.revalidate { 1 } else { 0 };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_vipsload(
             filename_in.as_ptr(),
             &mut out_out,
@@ -8768,6 +8931,8 @@ pub fn vipsload_with_opts(filename: &str, vipsload_options: &VipsloadOptions) ->
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
@@ -8821,6 +8986,9 @@ pub struct VipsloadSourceOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for VipsloadSourceOptions {
@@ -8830,6 +8998,7 @@ impl std::default::Default for VipsloadSourceOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
@@ -8858,6 +9027,13 @@ pub fn vipsload_source_with_opts(
         let fail_on_in: i32 = vipsload_source_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if vipsload_source_options.revalidate {
+            1
+        } else {
+            0
+        };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_vipsload_source(
             source_in,
             &mut out_out,
@@ -8869,6 +9045,8 @@ pub fn vipsload_source_with_opts(
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
@@ -8922,6 +9100,9 @@ pub struct AnalyzeloadOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for AnalyzeloadOptions {
@@ -8931,6 +9112,7 @@ impl std::default::Default for AnalyzeloadOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
@@ -8959,6 +9141,9 @@ pub fn analyzeload_with_opts(
         let fail_on_in: i32 = analyzeload_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if analyzeload_options.revalidate { 1 } else { 0 };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_analyzeload(
             filename_in.as_ptr(),
             &mut out_out,
@@ -8970,6 +9155,8 @@ pub fn analyzeload_with_opts(
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
@@ -8980,7 +9167,7 @@ pub fn analyzeload_with_opts(
     }
 }
 
-/// VipsForeignLoadPpmFile (ppmload), load ppm from file (.pbm, .pgm, .ppm, .pfm), priority=200, untrusted, is_a, get_flags, header, load
+/// VipsForeignLoadPpmFile (ppmload), load ppm from file (.pbm, .pgm, .ppm, .pfm, .pnm), priority=200, untrusted, is_a, get_flags, header, load
 /// filename: `&str` -> Filename to load from
 /// returns `VipsImage` - Output image
 pub fn ppmload(filename: &str) -> Result<VipsImage> {
@@ -9023,6 +9210,9 @@ pub struct PpmloadOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for PpmloadOptions {
@@ -9032,11 +9222,12 @@ impl std::default::Default for PpmloadOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
 
-/// VipsForeignLoadPpmFile (ppmload), load ppm from file (.pbm, .pgm, .ppm, .pfm), priority=200, untrusted, is_a, get_flags, header, load
+/// VipsForeignLoadPpmFile (ppmload), load ppm from file (.pbm, .pgm, .ppm, .pfm, .pnm), priority=200, untrusted, is_a, get_flags, header, load
 /// filename: `&str` -> Filename to load from
 /// ppmload_options: `&PpmloadOptions` -> optional arguments
 /// returns `VipsImage` - Output image
@@ -9057,6 +9248,9 @@ pub fn ppmload_with_opts(filename: &str, ppmload_options: &PpmloadOptions) -> Re
         let fail_on_in: i32 = ppmload_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if ppmload_options.revalidate { 1 } else { 0 };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_ppmload(
             filename_in.as_ptr(),
             &mut out_out,
@@ -9068,6 +9262,8 @@ pub fn ppmload_with_opts(filename: &str, ppmload_options: &PpmloadOptions) -> Re
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
@@ -9078,7 +9274,7 @@ pub fn ppmload_with_opts(filename: &str, ppmload_options: &PpmloadOptions) -> Re
     }
 }
 
-/// VipsForeignLoadPpmSource (ppmload_source), load ppm base class (.pbm, .pgm, .ppm, .pfm), priority=200, untrusted, is_a_source, get_flags, header, load
+/// VipsForeignLoadPpmSource (ppmload_source), load ppm base class (.pbm, .pgm, .ppm, .pfm, .pnm), priority=200, untrusted, is_a_source, get_flags, header, load
 /// source: `&VipsSource` -> Source to load from
 /// returns `VipsImage` - Output image
 pub fn ppmload_source(source: &VipsSource) -> Result<VipsImage> {
@@ -9121,6 +9317,9 @@ pub struct PpmloadSourceOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for PpmloadSourceOptions {
@@ -9130,11 +9329,12 @@ impl std::default::Default for PpmloadSourceOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
 
-/// VipsForeignLoadPpmSource (ppmload_source), load ppm base class (.pbm, .pgm, .ppm, .pfm), priority=200, untrusted, is_a_source, get_flags, header, load
+/// VipsForeignLoadPpmSource (ppmload_source), load ppm base class (.pbm, .pgm, .ppm, .pfm, .pnm), priority=200, untrusted, is_a_source, get_flags, header, load
 /// source: `&VipsSource` -> Source to load from
 /// ppmload_source_options: `&PpmloadSourceOptions` -> optional arguments
 /// returns `VipsImage` - Output image
@@ -9158,6 +9358,13 @@ pub fn ppmload_source_with_opts(
         let fail_on_in: i32 = ppmload_source_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if ppmload_source_options.revalidate {
+            1
+        } else {
+            0
+        };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_ppmload_source(
             source_in,
             &mut out_out,
@@ -9169,6 +9376,8 @@ pub fn ppmload_source_with_opts(
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
@@ -9222,6 +9431,9 @@ pub struct RadloadOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for RadloadOptions {
@@ -9231,6 +9443,7 @@ impl std::default::Default for RadloadOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
@@ -9256,6 +9469,9 @@ pub fn radload_with_opts(filename: &str, radload_options: &RadloadOptions) -> Re
         let fail_on_in: i32 = radload_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if radload_options.revalidate { 1 } else { 0 };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_radload(
             filename_in.as_ptr(),
             &mut out_out,
@@ -9267,6 +9483,8 @@ pub fn radload_with_opts(filename: &str, radload_options: &RadloadOptions) -> Re
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
@@ -9321,6 +9539,9 @@ pub struct RadloadBufferOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for RadloadBufferOptions {
@@ -9330,6 +9551,7 @@ impl std::default::Default for RadloadBufferOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
@@ -9358,6 +9580,13 @@ pub fn radload_buffer_with_opts(
         let fail_on_in: i32 = radload_buffer_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if radload_buffer_options.revalidate {
+            1
+        } else {
+            0
+        };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_radload_buffer(
             buffer_in,
             buffer.len() as u64,
@@ -9370,6 +9599,8 @@ pub fn radload_buffer_with_opts(
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
@@ -9423,6 +9654,9 @@ pub struct RadloadSourceOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for RadloadSourceOptions {
@@ -9432,6 +9666,7 @@ impl std::default::Default for RadloadSourceOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
@@ -9460,6 +9695,13 @@ pub fn radload_source_with_opts(
         let fail_on_in: i32 = radload_source_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if radload_source_options.revalidate {
+            1
+        } else {
+            0
+        };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_radload_source(
             source_in,
             &mut out_out,
@@ -9471,6 +9713,8 @@ pub fn radload_source_with_opts(
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
@@ -9533,6 +9777,9 @@ pub struct SvgloadOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for SvgloadOptions {
@@ -9545,6 +9792,7 @@ impl std::default::Default for SvgloadOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
@@ -9579,6 +9827,9 @@ pub fn svgload_with_opts(filename: &str, svgload_options: &SvgloadOptions) -> Re
         let fail_on_in: i32 = svgload_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if svgload_options.revalidate { 1 } else { 0 };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_svgload(
             filename_in.as_ptr(),
             &mut out_out,
@@ -9596,6 +9847,8 @@ pub fn svgload_with_opts(filename: &str, svgload_options: &SvgloadOptions) -> Re
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
@@ -9659,6 +9912,9 @@ pub struct SvgloadBufferOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for SvgloadBufferOptions {
@@ -9671,6 +9927,7 @@ impl std::default::Default for SvgloadBufferOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
@@ -9712,6 +9969,13 @@ pub fn svgload_buffer_with_opts(
         let fail_on_in: i32 = svgload_buffer_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if svgload_buffer_options.revalidate {
+            1
+        } else {
+            0
+        };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_svgload_buffer(
             buffer_in,
             buffer.len() as u64,
@@ -9730,6 +9994,8 @@ pub fn svgload_buffer_with_opts(
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
@@ -9740,30 +10006,172 @@ pub fn svgload_buffer_with_opts(
     }
 }
 
-/// VipsForeignLoadNsgifFile (gifload), load GIF with libnsgif (.gif), priority=50, is_a, get_flags, get_flags_filename, header, load
-/// filename: `&str` -> Filename to load from
+/// VipsForeignLoadSvgSource (svgload_source), load svg from source, priority=-5, untrusted, is_a_source, get_flags, get_flags_filename, header, load
+/// source: `&VipsSource` -> Source to load from
 /// returns `VipsImage` - Output image
-pub fn gifload(filename: &str) -> Result<VipsImage> {
+pub fn svgload_source(source: &VipsSource) -> Result<VipsImage> {
     unsafe {
-        let filename_in: CString = utils::new_c_string(filename)?;
+        let source_in: *mut bindings::VipsSource = source.ctx;
         let mut out_out: *mut bindings::VipsImage = null_mut();
 
-        let vips_op_response = bindings::vips_gifload(filename_in.as_ptr(), &mut out_out, NULL);
+        let vips_op_response = bindings::vips_svgload_source(source_in, &mut out_out, NULL);
         utils::result(
             vips_op_response,
             VipsImage { ctx: out_out },
-            Error::GifloadError,
+            Error::SvgloadSourceError,
         )
     }
 }
 
-/// Options for gifload operation
+/// Options for svgload_source operation
 #[derive(Clone, Debug)]
-pub struct GifloadOptions {
-    /// n: `i32` -> Load this many pages
-    /// min: -1, max: 100000, default: 1
-    pub n: i32,
-    /// page: `i32` -> Load this page from the file
+pub struct SvgloadSourceOptions {
+    /// dpi: `f64` -> Render at this DPI
+    /// min: 0.001, max: 100000, default: 72
+    pub dpi: f64,
+    /// scale: `f64` -> Scale output by this factor
+    /// min: 0.001, max: 100000, default: 1
+    pub scale: f64,
+    /// unlimited: `bool` -> Allow SVG of any size
+    /// default: false
+    pub unlimited: bool,
+    /// flags: `ForeignFlags` -> Flags for this file
+    ///  `None` -> VIPS_FOREIGN_NONE = 0 [DEFAULT]
+    ///  `Partial` -> VIPS_FOREIGN_PARTIAL = 1
+    ///  `Bigendian` -> VIPS_FOREIGN_BIGENDIAN = 2
+    ///  `Sequential` -> VIPS_FOREIGN_SEQUENTIAL = 4
+    ///  `All` -> VIPS_FOREIGN_ALL = 7
+    pub flags: ForeignFlags,
+    /// memory: `bool` -> Force open via memory
+    /// default: false
+    pub memory: bool,
+    /// access: `Access` -> Required access pattern for this file
+    ///  `Random` -> VIPS_ACCESS_RANDOM = 0 [DEFAULT]
+    ///  `Sequential` -> VIPS_ACCESS_SEQUENTIAL = 1
+    ///  `SequentialUnbuffered` -> VIPS_ACCESS_SEQUENTIAL_UNBUFFERED = 2
+    ///  `Last` -> VIPS_ACCESS_LAST = 3
+    pub access: Access,
+    /// fail_on: `FailOn` -> Error level to fail on
+    ///  `None` -> VIPS_FAIL_ON_NONE = 0 [DEFAULT]
+    ///  `Truncated` -> VIPS_FAIL_ON_TRUNCATED = 1
+    ///  `Error` -> VIPS_FAIL_ON_ERROR = 2
+    ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
+    ///  `Last` -> VIPS_FAIL_ON_LAST = 4
+    pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
+}
+
+impl std::default::Default for SvgloadSourceOptions {
+    fn default() -> Self {
+        SvgloadSourceOptions {
+            dpi: f64::from(72),
+            scale: f64::from(1),
+            unlimited: false,
+            flags: ForeignFlags::None,
+            memory: false,
+            access: Access::Random,
+            fail_on: FailOn::None,
+            revalidate: false,
+        }
+    }
+}
+
+/// VipsForeignLoadSvgSource (svgload_source), load svg from source, priority=-5, untrusted, is_a_source, get_flags, get_flags_filename, header, load
+/// source: `&VipsSource` -> Source to load from
+/// svgload_source_options: `&SvgloadSourceOptions` -> optional arguments
+/// returns `VipsImage` - Output image
+pub fn svgload_source_with_opts(
+    source: &VipsSource,
+    svgload_source_options: &SvgloadSourceOptions,
+) -> Result<VipsImage> {
+    unsafe {
+        let source_in: *mut bindings::VipsSource = source.ctx;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let dpi_in: f64 = svgload_source_options.dpi;
+        let dpi_in_name = utils::new_c_string("dpi")?;
+
+        let scale_in: f64 = svgload_source_options.scale;
+        let scale_in_name = utils::new_c_string("scale")?;
+
+        let unlimited_in: i32 = if svgload_source_options.unlimited {
+            1
+        } else {
+            0
+        };
+        let unlimited_in_name = utils::new_c_string("unlimited")?;
+
+        let flags_in: i32 = svgload_source_options.flags as i32;
+        let flags_in_name = utils::new_c_string("flags")?;
+
+        let memory_in: i32 = if svgload_source_options.memory { 1 } else { 0 };
+        let memory_in_name = utils::new_c_string("memory")?;
+
+        let access_in: i32 = svgload_source_options.access as i32;
+        let access_in_name = utils::new_c_string("access")?;
+
+        let fail_on_in: i32 = svgload_source_options.fail_on as i32;
+        let fail_on_in_name = utils::new_c_string("fail-on")?;
+
+        let revalidate_in: i32 = if svgload_source_options.revalidate {
+            1
+        } else {
+            0
+        };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
+        let vips_op_response = bindings::vips_svgload_source(
+            source_in,
+            &mut out_out,
+            dpi_in_name.as_ptr(),
+            dpi_in,
+            scale_in_name.as_ptr(),
+            scale_in,
+            unlimited_in_name.as_ptr(),
+            unlimited_in,
+            flags_in_name.as_ptr(),
+            flags_in,
+            memory_in_name.as_ptr(),
+            memory_in,
+            access_in_name.as_ptr(),
+            access_in,
+            fail_on_in_name.as_ptr(),
+            fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
+            NULL,
+        );
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::SvgloadSourceError,
+        )
+    }
+}
+
+/// VipsForeignLoadJp2kFile (jp2kload), load JPEG2000 image (.j2k, .jp2, .jpt, .j2c, .jpc), priority=0, untrusted, is_a, get_flags, header, load
+/// filename: `&str` -> Filename to load from
+/// returns `VipsImage` - Output image
+pub fn jp_2kload(filename: &str) -> Result<VipsImage> {
+    unsafe {
+        let filename_in: CString = utils::new_c_string(filename)?;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let vips_op_response = bindings::vips_jp2kload(filename_in.as_ptr(), &mut out_out, NULL);
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::Jp2KloadError,
+        )
+    }
+}
+
+/// Options for jp_2kload operation
+#[derive(Clone, Debug)]
+pub struct Jp2KloadOptions {
+    /// page: `i32` -> Load this page from the image
     /// min: 0, max: 100000, default: 0
     pub page: i32,
     /// flags: `ForeignFlags` -> Flags for this file
@@ -9789,6 +10197,387 @@ pub struct GifloadOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
+}
+
+impl std::default::Default for Jp2KloadOptions {
+    fn default() -> Self {
+        Jp2KloadOptions {
+            page: i32::from(0),
+            flags: ForeignFlags::None,
+            memory: false,
+            access: Access::Random,
+            fail_on: FailOn::None,
+            revalidate: false,
+        }
+    }
+}
+
+/// VipsForeignLoadJp2kFile (jp2kload), load JPEG2000 image (.j2k, .jp2, .jpt, .j2c, .jpc), priority=0, untrusted, is_a, get_flags, header, load
+/// filename: `&str` -> Filename to load from
+/// jp_2kload_options: `&Jp2KloadOptions` -> optional arguments
+/// returns `VipsImage` - Output image
+pub fn jp_2kload_with_opts(
+    filename: &str,
+    jp_2kload_options: &Jp2KloadOptions,
+) -> Result<VipsImage> {
+    unsafe {
+        let filename_in: CString = utils::new_c_string(filename)?;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let page_in: i32 = jp_2kload_options.page;
+        let page_in_name = utils::new_c_string("page")?;
+
+        let flags_in: i32 = jp_2kload_options.flags as i32;
+        let flags_in_name = utils::new_c_string("flags")?;
+
+        let memory_in: i32 = if jp_2kload_options.memory { 1 } else { 0 };
+        let memory_in_name = utils::new_c_string("memory")?;
+
+        let access_in: i32 = jp_2kload_options.access as i32;
+        let access_in_name = utils::new_c_string("access")?;
+
+        let fail_on_in: i32 = jp_2kload_options.fail_on as i32;
+        let fail_on_in_name = utils::new_c_string("fail-on")?;
+
+        let revalidate_in: i32 = if jp_2kload_options.revalidate { 1 } else { 0 };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
+        let vips_op_response = bindings::vips_jp2kload(
+            filename_in.as_ptr(),
+            &mut out_out,
+            page_in_name.as_ptr(),
+            page_in,
+            flags_in_name.as_ptr(),
+            flags_in,
+            memory_in_name.as_ptr(),
+            memory_in,
+            access_in_name.as_ptr(),
+            access_in,
+            fail_on_in_name.as_ptr(),
+            fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
+            NULL,
+        );
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::Jp2KloadError,
+        )
+    }
+}
+
+/// VipsForeignLoadJp2kBuffer (jp2kload_buffer), load JPEG2000 image, priority=0, untrusted, is_a_buffer, get_flags, header, load
+/// buffer: `&[u8]` -> Buffer to load from
+/// returns `VipsImage` - Output image
+pub fn jp_2kload_buffer(buffer: &[u8]) -> Result<VipsImage> {
+    unsafe {
+        let buffer_in: *mut c_void = buffer.as_ptr() as *mut c_void;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let vips_op_response =
+            bindings::vips_jp2kload_buffer(buffer_in, buffer.len() as u64, &mut out_out, NULL);
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::Jp2KloadBufferError,
+        )
+    }
+}
+
+/// Options for jp_2kload_buffer operation
+#[derive(Clone, Debug)]
+pub struct Jp2KloadBufferOptions {
+    /// page: `i32` -> Load this page from the image
+    /// min: 0, max: 100000, default: 0
+    pub page: i32,
+    /// flags: `ForeignFlags` -> Flags for this file
+    ///  `None` -> VIPS_FOREIGN_NONE = 0 [DEFAULT]
+    ///  `Partial` -> VIPS_FOREIGN_PARTIAL = 1
+    ///  `Bigendian` -> VIPS_FOREIGN_BIGENDIAN = 2
+    ///  `Sequential` -> VIPS_FOREIGN_SEQUENTIAL = 4
+    ///  `All` -> VIPS_FOREIGN_ALL = 7
+    pub flags: ForeignFlags,
+    /// memory: `bool` -> Force open via memory
+    /// default: false
+    pub memory: bool,
+    /// access: `Access` -> Required access pattern for this file
+    ///  `Random` -> VIPS_ACCESS_RANDOM = 0 [DEFAULT]
+    ///  `Sequential` -> VIPS_ACCESS_SEQUENTIAL = 1
+    ///  `SequentialUnbuffered` -> VIPS_ACCESS_SEQUENTIAL_UNBUFFERED = 2
+    ///  `Last` -> VIPS_ACCESS_LAST = 3
+    pub access: Access,
+    /// fail_on: `FailOn` -> Error level to fail on
+    ///  `None` -> VIPS_FAIL_ON_NONE = 0 [DEFAULT]
+    ///  `Truncated` -> VIPS_FAIL_ON_TRUNCATED = 1
+    ///  `Error` -> VIPS_FAIL_ON_ERROR = 2
+    ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
+    ///  `Last` -> VIPS_FAIL_ON_LAST = 4
+    pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
+}
+
+impl std::default::Default for Jp2KloadBufferOptions {
+    fn default() -> Self {
+        Jp2KloadBufferOptions {
+            page: i32::from(0),
+            flags: ForeignFlags::None,
+            memory: false,
+            access: Access::Random,
+            fail_on: FailOn::None,
+            revalidate: false,
+        }
+    }
+}
+
+/// VipsForeignLoadJp2kBuffer (jp2kload_buffer), load JPEG2000 image, priority=0, untrusted, is_a_buffer, get_flags, header, load
+/// buffer: `&[u8]` -> Buffer to load from
+/// jp_2kload_buffer_options: `&Jp2KloadBufferOptions` -> optional arguments
+/// returns `VipsImage` - Output image
+pub fn jp_2kload_buffer_with_opts(
+    buffer: &[u8],
+    jp_2kload_buffer_options: &Jp2KloadBufferOptions,
+) -> Result<VipsImage> {
+    unsafe {
+        let buffer_in: *mut c_void = buffer.as_ptr() as *mut c_void;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let page_in: i32 = jp_2kload_buffer_options.page;
+        let page_in_name = utils::new_c_string("page")?;
+
+        let flags_in: i32 = jp_2kload_buffer_options.flags as i32;
+        let flags_in_name = utils::new_c_string("flags")?;
+
+        let memory_in: i32 = if jp_2kload_buffer_options.memory {
+            1
+        } else {
+            0
+        };
+        let memory_in_name = utils::new_c_string("memory")?;
+
+        let access_in: i32 = jp_2kload_buffer_options.access as i32;
+        let access_in_name = utils::new_c_string("access")?;
+
+        let fail_on_in: i32 = jp_2kload_buffer_options.fail_on as i32;
+        let fail_on_in_name = utils::new_c_string("fail-on")?;
+
+        let revalidate_in: i32 = if jp_2kload_buffer_options.revalidate {
+            1
+        } else {
+            0
+        };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
+        let vips_op_response = bindings::vips_jp2kload_buffer(
+            buffer_in,
+            buffer.len() as u64,
+            &mut out_out,
+            page_in_name.as_ptr(),
+            page_in,
+            flags_in_name.as_ptr(),
+            flags_in,
+            memory_in_name.as_ptr(),
+            memory_in,
+            access_in_name.as_ptr(),
+            access_in,
+            fail_on_in_name.as_ptr(),
+            fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
+            NULL,
+        );
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::Jp2KloadBufferError,
+        )
+    }
+}
+
+/// VipsForeignLoadJp2kSource (jp2kload_source), load JPEG2000 image, priority=0, untrusted, is_a_source, get_flags, header, load
+/// source: `&VipsSource` -> Source to load from
+/// returns `VipsImage` - Output image
+pub fn jp_2kload_source(source: &VipsSource) -> Result<VipsImage> {
+    unsafe {
+        let source_in: *mut bindings::VipsSource = source.ctx;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let vips_op_response = bindings::vips_jp2kload_source(source_in, &mut out_out, NULL);
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::Jp2KloadSourceError,
+        )
+    }
+}
+
+/// Options for jp_2kload_source operation
+#[derive(Clone, Debug)]
+pub struct Jp2KloadSourceOptions {
+    /// page: `i32` -> Load this page from the image
+    /// min: 0, max: 100000, default: 0
+    pub page: i32,
+    /// flags: `ForeignFlags` -> Flags for this file
+    ///  `None` -> VIPS_FOREIGN_NONE = 0 [DEFAULT]
+    ///  `Partial` -> VIPS_FOREIGN_PARTIAL = 1
+    ///  `Bigendian` -> VIPS_FOREIGN_BIGENDIAN = 2
+    ///  `Sequential` -> VIPS_FOREIGN_SEQUENTIAL = 4
+    ///  `All` -> VIPS_FOREIGN_ALL = 7
+    pub flags: ForeignFlags,
+    /// memory: `bool` -> Force open via memory
+    /// default: false
+    pub memory: bool,
+    /// access: `Access` -> Required access pattern for this file
+    ///  `Random` -> VIPS_ACCESS_RANDOM = 0 [DEFAULT]
+    ///  `Sequential` -> VIPS_ACCESS_SEQUENTIAL = 1
+    ///  `SequentialUnbuffered` -> VIPS_ACCESS_SEQUENTIAL_UNBUFFERED = 2
+    ///  `Last` -> VIPS_ACCESS_LAST = 3
+    pub access: Access,
+    /// fail_on: `FailOn` -> Error level to fail on
+    ///  `None` -> VIPS_FAIL_ON_NONE = 0 [DEFAULT]
+    ///  `Truncated` -> VIPS_FAIL_ON_TRUNCATED = 1
+    ///  `Error` -> VIPS_FAIL_ON_ERROR = 2
+    ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
+    ///  `Last` -> VIPS_FAIL_ON_LAST = 4
+    pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
+}
+
+impl std::default::Default for Jp2KloadSourceOptions {
+    fn default() -> Self {
+        Jp2KloadSourceOptions {
+            page: i32::from(0),
+            flags: ForeignFlags::None,
+            memory: false,
+            access: Access::Random,
+            fail_on: FailOn::None,
+            revalidate: false,
+        }
+    }
+}
+
+/// VipsForeignLoadJp2kSource (jp2kload_source), load JPEG2000 image, priority=0, untrusted, is_a_source, get_flags, header, load
+/// source: `&VipsSource` -> Source to load from
+/// jp_2kload_source_options: `&Jp2KloadSourceOptions` -> optional arguments
+/// returns `VipsImage` - Output image
+pub fn jp_2kload_source_with_opts(
+    source: &VipsSource,
+    jp_2kload_source_options: &Jp2KloadSourceOptions,
+) -> Result<VipsImage> {
+    unsafe {
+        let source_in: *mut bindings::VipsSource = source.ctx;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let page_in: i32 = jp_2kload_source_options.page;
+        let page_in_name = utils::new_c_string("page")?;
+
+        let flags_in: i32 = jp_2kload_source_options.flags as i32;
+        let flags_in_name = utils::new_c_string("flags")?;
+
+        let memory_in: i32 = if jp_2kload_source_options.memory {
+            1
+        } else {
+            0
+        };
+        let memory_in_name = utils::new_c_string("memory")?;
+
+        let access_in: i32 = jp_2kload_source_options.access as i32;
+        let access_in_name = utils::new_c_string("access")?;
+
+        let fail_on_in: i32 = jp_2kload_source_options.fail_on as i32;
+        let fail_on_in_name = utils::new_c_string("fail-on")?;
+
+        let revalidate_in: i32 = if jp_2kload_source_options.revalidate {
+            1
+        } else {
+            0
+        };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
+        let vips_op_response = bindings::vips_jp2kload_source(
+            source_in,
+            &mut out_out,
+            page_in_name.as_ptr(),
+            page_in,
+            flags_in_name.as_ptr(),
+            flags_in,
+            memory_in_name.as_ptr(),
+            memory_in,
+            access_in_name.as_ptr(),
+            access_in,
+            fail_on_in_name.as_ptr(),
+            fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
+            NULL,
+        );
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::Jp2KloadSourceError,
+        )
+    }
+}
+
+/// VipsForeignLoadNsgifFile (gifload), load GIF with libnsgif (.gif), priority=50, is_a, get_flags, get_flags_filename, header, load
+/// filename: `&str` -> Filename to load from
+/// returns `VipsImage` - Output image
+pub fn gifload(filename: &str) -> Result<VipsImage> {
+    unsafe {
+        let filename_in: CString = utils::new_c_string(filename)?;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let vips_op_response = bindings::vips_gifload(filename_in.as_ptr(), &mut out_out, NULL);
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::GifloadError,
+        )
+    }
+}
+
+/// Options for gifload operation
+#[derive(Clone, Debug)]
+pub struct GifloadOptions {
+    /// n: `i32` -> Number of pages to load, -1 for all
+    /// min: -1, max: 100000, default: 1
+    pub n: i32,
+    /// page: `i32` -> First page to load
+    /// min: 0, max: 100000, default: 0
+    pub page: i32,
+    /// flags: `ForeignFlags` -> Flags for this file
+    ///  `None` -> VIPS_FOREIGN_NONE = 0 [DEFAULT]
+    ///  `Partial` -> VIPS_FOREIGN_PARTIAL = 1
+    ///  `Bigendian` -> VIPS_FOREIGN_BIGENDIAN = 2
+    ///  `Sequential` -> VIPS_FOREIGN_SEQUENTIAL = 4
+    ///  `All` -> VIPS_FOREIGN_ALL = 7
+    pub flags: ForeignFlags,
+    /// memory: `bool` -> Force open via memory
+    /// default: false
+    pub memory: bool,
+    /// access: `Access` -> Required access pattern for this file
+    ///  `Random` -> VIPS_ACCESS_RANDOM = 0 [DEFAULT]
+    ///  `Sequential` -> VIPS_ACCESS_SEQUENTIAL = 1
+    ///  `SequentialUnbuffered` -> VIPS_ACCESS_SEQUENTIAL_UNBUFFERED = 2
+    ///  `Last` -> VIPS_ACCESS_LAST = 3
+    pub access: Access,
+    /// fail_on: `FailOn` -> Error level to fail on
+    ///  `None` -> VIPS_FAIL_ON_NONE = 0 [DEFAULT]
+    ///  `Truncated` -> VIPS_FAIL_ON_TRUNCATED = 1
+    ///  `Error` -> VIPS_FAIL_ON_ERROR = 2
+    ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
+    ///  `Last` -> VIPS_FAIL_ON_LAST = 4
+    pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for GifloadOptions {
@@ -9800,6 +10589,7 @@ impl std::default::Default for GifloadOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
@@ -9831,6 +10621,9 @@ pub fn gifload_with_opts(filename: &str, gifload_options: &GifloadOptions) -> Re
         let fail_on_in: i32 = gifload_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if gifload_options.revalidate { 1 } else { 0 };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_gifload(
             filename_in.as_ptr(),
             &mut out_out,
@@ -9846,6 +10639,8 @@ pub fn gifload_with_opts(filename: &str, gifload_options: &GifloadOptions) -> Re
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
@@ -9877,10 +10672,10 @@ pub fn gifload_buffer(buffer: &[u8]) -> Result<VipsImage> {
 /// Options for gifload_buffer operation
 #[derive(Clone, Debug)]
 pub struct GifloadBufferOptions {
-    /// n: `i32` -> Load this many pages
+    /// n: `i32` -> Number of pages to load, -1 for all
     /// min: -1, max: 100000, default: 1
     pub n: i32,
-    /// page: `i32` -> Load this page from the file
+    /// page: `i32` -> First page to load
     /// min: 0, max: 100000, default: 0
     pub page: i32,
     /// flags: `ForeignFlags` -> Flags for this file
@@ -9906,6 +10701,9 @@ pub struct GifloadBufferOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for GifloadBufferOptions {
@@ -9917,6 +10715,7 @@ impl std::default::Default for GifloadBufferOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
@@ -9951,6 +10750,13 @@ pub fn gifload_buffer_with_opts(
         let fail_on_in: i32 = gifload_buffer_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if gifload_buffer_options.revalidate {
+            1
+        } else {
+            0
+        };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_gifload_buffer(
             buffer_in,
             buffer.len() as u64,
@@ -9967,6 +10773,8 @@ pub fn gifload_buffer_with_opts(
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
@@ -9997,10 +10805,10 @@ pub fn gifload_source(source: &VipsSource) -> Result<VipsImage> {
 /// Options for gifload_source operation
 #[derive(Clone, Debug)]
 pub struct GifloadSourceOptions {
-    /// n: `i32` -> Load this many pages
+    /// n: `i32` -> Number of pages to load, -1 for all
     /// min: -1, max: 100000, default: 1
     pub n: i32,
-    /// page: `i32` -> Load this page from the file
+    /// page: `i32` -> First page to load
     /// min: 0, max: 100000, default: 0
     pub page: i32,
     /// flags: `ForeignFlags` -> Flags for this file
@@ -10026,6 +10834,9 @@ pub struct GifloadSourceOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for GifloadSourceOptions {
@@ -10037,6 +10848,7 @@ impl std::default::Default for GifloadSourceOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
@@ -10071,6 +10883,13 @@ pub fn gifload_source_with_opts(
         let fail_on_in: i32 = gifload_source_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if gifload_source_options.revalidate {
+            1
+        } else {
+            0
+        };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_gifload_source(
             source_in,
             &mut out_out,
@@ -10086,6 +10905,8 @@ pub fn gifload_source_with_opts(
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
@@ -10142,6 +10963,9 @@ pub struct PngloadOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for PngloadOptions {
@@ -10152,6 +10976,7 @@ impl std::default::Default for PngloadOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
@@ -10180,6 +11005,9 @@ pub fn pngload_with_opts(filename: &str, pngload_options: &PngloadOptions) -> Re
         let fail_on_in: i32 = pngload_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if pngload_options.revalidate { 1 } else { 0 };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_pngload(
             filename_in.as_ptr(),
             &mut out_out,
@@ -10193,6 +11021,8 @@ pub fn pngload_with_opts(filename: &str, pngload_options: &PngloadOptions) -> Re
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
@@ -10250,6 +11080,9 @@ pub struct PngloadBufferOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for PngloadBufferOptions {
@@ -10260,6 +11093,7 @@ impl std::default::Default for PngloadBufferOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
@@ -10295,6 +11129,13 @@ pub fn pngload_buffer_with_opts(
         let fail_on_in: i32 = pngload_buffer_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if pngload_buffer_options.revalidate {
+            1
+        } else {
+            0
+        };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_pngload_buffer(
             buffer_in,
             buffer.len() as u64,
@@ -10309,6 +11150,8 @@ pub fn pngload_buffer_with_opts(
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
@@ -10365,6 +11208,9 @@ pub struct PngloadSourceOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for PngloadSourceOptions {
@@ -10375,6 +11221,7 @@ impl std::default::Default for PngloadSourceOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
@@ -10410,6 +11257,13 @@ pub fn pngload_source_with_opts(
         let fail_on_in: i32 = pngload_source_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if pngload_source_options.revalidate {
+            1
+        } else {
+            0
+        };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_pngload_source(
             source_in,
             &mut out_out,
@@ -10423,6 +11277,8 @@ pub fn pngload_source_with_opts(
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
@@ -10433,7 +11289,114 @@ pub fn pngload_source_with_opts(
     }
 }
 
-/// VipsForeignLoadJpegFile (jpegload), load jpeg from file (.jpg, .jpeg, .jpe), priority=50, is_a, get_flags, get_flags_filename, header, load
+/// VipsForeignLoadMat (matload), load mat from file (.mat), priority=0, untrusted, is_a, get_flags, get_flags_filename, header, load
+/// filename: `&str` -> Filename to load from
+/// returns `VipsImage` - Output image
+pub fn matload(filename: &str) -> Result<VipsImage> {
+    unsafe {
+        let filename_in: CString = utils::new_c_string(filename)?;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let vips_op_response = bindings::vips_matload(filename_in.as_ptr(), &mut out_out, NULL);
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::MatloadError,
+        )
+    }
+}
+
+/// Options for matload operation
+#[derive(Clone, Debug)]
+pub struct MatloadOptions {
+    /// flags: `ForeignFlags` -> Flags for this file
+    ///  `None` -> VIPS_FOREIGN_NONE = 0 [DEFAULT]
+    ///  `Partial` -> VIPS_FOREIGN_PARTIAL = 1
+    ///  `Bigendian` -> VIPS_FOREIGN_BIGENDIAN = 2
+    ///  `Sequential` -> VIPS_FOREIGN_SEQUENTIAL = 4
+    ///  `All` -> VIPS_FOREIGN_ALL = 7
+    pub flags: ForeignFlags,
+    /// memory: `bool` -> Force open via memory
+    /// default: false
+    pub memory: bool,
+    /// access: `Access` -> Required access pattern for this file
+    ///  `Random` -> VIPS_ACCESS_RANDOM = 0 [DEFAULT]
+    ///  `Sequential` -> VIPS_ACCESS_SEQUENTIAL = 1
+    ///  `SequentialUnbuffered` -> VIPS_ACCESS_SEQUENTIAL_UNBUFFERED = 2
+    ///  `Last` -> VIPS_ACCESS_LAST = 3
+    pub access: Access,
+    /// fail_on: `FailOn` -> Error level to fail on
+    ///  `None` -> VIPS_FAIL_ON_NONE = 0 [DEFAULT]
+    ///  `Truncated` -> VIPS_FAIL_ON_TRUNCATED = 1
+    ///  `Error` -> VIPS_FAIL_ON_ERROR = 2
+    ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
+    ///  `Last` -> VIPS_FAIL_ON_LAST = 4
+    pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
+}
+
+impl std::default::Default for MatloadOptions {
+    fn default() -> Self {
+        MatloadOptions {
+            flags: ForeignFlags::None,
+            memory: false,
+            access: Access::Random,
+            fail_on: FailOn::None,
+            revalidate: false,
+        }
+    }
+}
+
+/// VipsForeignLoadMat (matload), load mat from file (.mat), priority=0, untrusted, is_a, get_flags, get_flags_filename, header, load
+/// filename: `&str` -> Filename to load from
+/// matload_options: `&MatloadOptions` -> optional arguments
+/// returns `VipsImage` - Output image
+pub fn matload_with_opts(filename: &str, matload_options: &MatloadOptions) -> Result<VipsImage> {
+    unsafe {
+        let filename_in: CString = utils::new_c_string(filename)?;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let flags_in: i32 = matload_options.flags as i32;
+        let flags_in_name = utils::new_c_string("flags")?;
+
+        let memory_in: i32 = if matload_options.memory { 1 } else { 0 };
+        let memory_in_name = utils::new_c_string("memory")?;
+
+        let access_in: i32 = matload_options.access as i32;
+        let access_in_name = utils::new_c_string("access")?;
+
+        let fail_on_in: i32 = matload_options.fail_on as i32;
+        let fail_on_in_name = utils::new_c_string("fail-on")?;
+
+        let revalidate_in: i32 = if matload_options.revalidate { 1 } else { 0 };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
+        let vips_op_response = bindings::vips_matload(
+            filename_in.as_ptr(),
+            &mut out_out,
+            flags_in_name.as_ptr(),
+            flags_in,
+            memory_in_name.as_ptr(),
+            memory_in,
+            access_in_name.as_ptr(),
+            access_in,
+            fail_on_in_name.as_ptr(),
+            fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
+            NULL,
+        );
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::MatloadError,
+        )
+    }
+}
+
+/// VipsForeignLoadJpegFile (jpegload), load jpeg from file (.jpg, .jpeg, .jpe, .jfif), priority=50, is_a, get_flags, get_flags_filename, header, load
 /// filename: `&str` -> Filename to load from
 /// returns `VipsImage` - Output image
 pub fn jpegload(filename: &str) -> Result<VipsImage> {
@@ -10485,6 +11448,9 @@ pub struct JpegloadOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for JpegloadOptions {
@@ -10497,11 +11463,12 @@ impl std::default::Default for JpegloadOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
 
-/// VipsForeignLoadJpegFile (jpegload), load jpeg from file (.jpg, .jpeg, .jpe), priority=50, is_a, get_flags, get_flags_filename, header, load
+/// VipsForeignLoadJpegFile (jpegload), load jpeg from file (.jpg, .jpeg, .jpe, .jfif), priority=50, is_a, get_flags, get_flags_filename, header, load
 /// filename: `&str` -> Filename to load from
 /// jpegload_options: `&JpegloadOptions` -> optional arguments
 /// returns `VipsImage` - Output image
@@ -10531,6 +11498,9 @@ pub fn jpegload_with_opts(filename: &str, jpegload_options: &JpegloadOptions) ->
         let fail_on_in: i32 = jpegload_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if jpegload_options.revalidate { 1 } else { 0 };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_jpegload(
             filename_in.as_ptr(),
             &mut out_out,
@@ -10548,6 +11518,8 @@ pub fn jpegload_with_opts(filename: &str, jpegload_options: &JpegloadOptions) ->
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
@@ -10611,6 +11583,9 @@ pub struct JpegloadBufferOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for JpegloadBufferOptions {
@@ -10623,6 +11598,7 @@ impl std::default::Default for JpegloadBufferOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
@@ -10668,6 +11644,13 @@ pub fn jpegload_buffer_with_opts(
         let fail_on_in: i32 = jpegload_buffer_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if jpegload_buffer_options.revalidate {
+            1
+        } else {
+            0
+        };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_jpegload_buffer(
             buffer_in,
             buffer.len() as u64,
@@ -10686,12 +11669,163 @@ pub fn jpegload_buffer_with_opts(
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
             vips_op_response,
             VipsImage { ctx: out_out },
             Error::JpegloadBufferError,
+        )
+    }
+}
+
+/// VipsForeignLoadJpegSource (jpegload_source), load image from jpeg source, priority=50, is_a_source, get_flags, get_flags_filename, header, load
+/// source: `&VipsSource` -> Source to load from
+/// returns `VipsImage` - Output image
+pub fn jpegload_source(source: &VipsSource) -> Result<VipsImage> {
+    unsafe {
+        let source_in: *mut bindings::VipsSource = source.ctx;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let vips_op_response = bindings::vips_jpegload_source(source_in, &mut out_out, NULL);
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::JpegloadSourceError,
+        )
+    }
+}
+
+/// Options for jpegload_source operation
+#[derive(Clone, Debug)]
+pub struct JpegloadSourceOptions {
+    /// shrink: `i32` -> Shrink factor on load
+    /// min: 1, max: 16, default: 1
+    pub shrink: i32,
+    /// autorotate: `bool` -> Rotate image using exif orientation
+    /// default: false
+    pub autorotate: bool,
+    /// unlimited: `bool` -> Remove all denial of service limits
+    /// default: false
+    pub unlimited: bool,
+    /// flags: `ForeignFlags` -> Flags for this file
+    ///  `None` -> VIPS_FOREIGN_NONE = 0 [DEFAULT]
+    ///  `Partial` -> VIPS_FOREIGN_PARTIAL = 1
+    ///  `Bigendian` -> VIPS_FOREIGN_BIGENDIAN = 2
+    ///  `Sequential` -> VIPS_FOREIGN_SEQUENTIAL = 4
+    ///  `All` -> VIPS_FOREIGN_ALL = 7
+    pub flags: ForeignFlags,
+    /// memory: `bool` -> Force open via memory
+    /// default: false
+    pub memory: bool,
+    /// access: `Access` -> Required access pattern for this file
+    ///  `Random` -> VIPS_ACCESS_RANDOM = 0 [DEFAULT]
+    ///  `Sequential` -> VIPS_ACCESS_SEQUENTIAL = 1
+    ///  `SequentialUnbuffered` -> VIPS_ACCESS_SEQUENTIAL_UNBUFFERED = 2
+    ///  `Last` -> VIPS_ACCESS_LAST = 3
+    pub access: Access,
+    /// fail_on: `FailOn` -> Error level to fail on
+    ///  `None` -> VIPS_FAIL_ON_NONE = 0 [DEFAULT]
+    ///  `Truncated` -> VIPS_FAIL_ON_TRUNCATED = 1
+    ///  `Error` -> VIPS_FAIL_ON_ERROR = 2
+    ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
+    ///  `Last` -> VIPS_FAIL_ON_LAST = 4
+    pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
+}
+
+impl std::default::Default for JpegloadSourceOptions {
+    fn default() -> Self {
+        JpegloadSourceOptions {
+            shrink: i32::from(1),
+            autorotate: false,
+            unlimited: false,
+            flags: ForeignFlags::None,
+            memory: false,
+            access: Access::Random,
+            fail_on: FailOn::None,
+            revalidate: false,
+        }
+    }
+}
+
+/// VipsForeignLoadJpegSource (jpegload_source), load image from jpeg source, priority=50, is_a_source, get_flags, get_flags_filename, header, load
+/// source: `&VipsSource` -> Source to load from
+/// jpegload_source_options: `&JpegloadSourceOptions` -> optional arguments
+/// returns `VipsImage` - Output image
+pub fn jpegload_source_with_opts(
+    source: &VipsSource,
+    jpegload_source_options: &JpegloadSourceOptions,
+) -> Result<VipsImage> {
+    unsafe {
+        let source_in: *mut bindings::VipsSource = source.ctx;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let shrink_in: i32 = jpegload_source_options.shrink;
+        let shrink_in_name = utils::new_c_string("shrink")?;
+
+        let autorotate_in: i32 = if jpegload_source_options.autorotate {
+            1
+        } else {
+            0
+        };
+        let autorotate_in_name = utils::new_c_string("autorotate")?;
+
+        let unlimited_in: i32 = if jpegload_source_options.unlimited {
+            1
+        } else {
+            0
+        };
+        let unlimited_in_name = utils::new_c_string("unlimited")?;
+
+        let flags_in: i32 = jpegload_source_options.flags as i32;
+        let flags_in_name = utils::new_c_string("flags")?;
+
+        let memory_in: i32 = if jpegload_source_options.memory { 1 } else { 0 };
+        let memory_in_name = utils::new_c_string("memory")?;
+
+        let access_in: i32 = jpegload_source_options.access as i32;
+        let access_in_name = utils::new_c_string("access")?;
+
+        let fail_on_in: i32 = jpegload_source_options.fail_on as i32;
+        let fail_on_in_name = utils::new_c_string("fail-on")?;
+
+        let revalidate_in: i32 = if jpegload_source_options.revalidate {
+            1
+        } else {
+            0
+        };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
+        let vips_op_response = bindings::vips_jpegload_source(
+            source_in,
+            &mut out_out,
+            shrink_in_name.as_ptr(),
+            shrink_in,
+            autorotate_in_name.as_ptr(),
+            autorotate_in,
+            unlimited_in_name.as_ptr(),
+            unlimited_in,
+            flags_in_name.as_ptr(),
+            flags_in,
+            memory_in_name.as_ptr(),
+            memory_in,
+            access_in_name.as_ptr(),
+            access_in,
+            fail_on_in_name.as_ptr(),
+            fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
+            NULL,
+        );
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::JpegloadSourceError,
         )
     }
 }
@@ -10716,13 +11850,13 @@ pub fn webpload(filename: &str) -> Result<VipsImage> {
 /// Options for webpload operation
 #[derive(Clone, Debug)]
 pub struct WebploadOptions {
-    /// page: `i32` -> Load this page from the file
+    /// page: `i32` -> First page to load
     /// min: 0, max: 100000, default: 0
     pub page: i32,
-    /// n: `i32` -> Load this many pages
+    /// n: `i32` -> Number of pages to load, -1 for all
     /// min: -1, max: 100000, default: 1
     pub n: i32,
-    /// scale: `f64` -> Scale factor on load
+    /// scale: `f64` -> Factor to scale by
     /// min: 0, max: 1024, default: 1
     pub scale: f64,
     /// flags: `ForeignFlags` -> Flags for this file
@@ -10748,6 +11882,9 @@ pub struct WebploadOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for WebploadOptions {
@@ -10760,6 +11897,7 @@ impl std::default::Default for WebploadOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
@@ -10794,6 +11932,9 @@ pub fn webpload_with_opts(filename: &str, webpload_options: &WebploadOptions) ->
         let fail_on_in: i32 = webpload_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if webpload_options.revalidate { 1 } else { 0 };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_webpload(
             filename_in.as_ptr(),
             &mut out_out,
@@ -10811,6 +11952,8 @@ pub fn webpload_with_opts(filename: &str, webpload_options: &WebploadOptions) ->
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
@@ -10842,13 +11985,13 @@ pub fn webpload_buffer(buffer: &[u8]) -> Result<VipsImage> {
 /// Options for webpload_buffer operation
 #[derive(Clone, Debug)]
 pub struct WebploadBufferOptions {
-    /// page: `i32` -> Load this page from the file
+    /// page: `i32` -> First page to load
     /// min: 0, max: 100000, default: 0
     pub page: i32,
-    /// n: `i32` -> Load this many pages
+    /// n: `i32` -> Number of pages to load, -1 for all
     /// min: -1, max: 100000, default: 1
     pub n: i32,
-    /// scale: `f64` -> Scale factor on load
+    /// scale: `f64` -> Factor to scale by
     /// min: 0, max: 1024, default: 1
     pub scale: f64,
     /// flags: `ForeignFlags` -> Flags for this file
@@ -10874,6 +12017,9 @@ pub struct WebploadBufferOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for WebploadBufferOptions {
@@ -10886,6 +12032,7 @@ impl std::default::Default for WebploadBufferOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
@@ -10923,6 +12070,13 @@ pub fn webpload_buffer_with_opts(
         let fail_on_in: i32 = webpload_buffer_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if webpload_buffer_options.revalidate {
+            1
+        } else {
+            0
+        };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_webpload_buffer(
             buffer_in,
             buffer.len() as u64,
@@ -10941,6 +12095,8 @@ pub fn webpload_buffer_with_opts(
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
@@ -10971,13 +12127,13 @@ pub fn webpload_source(source: &VipsSource) -> Result<VipsImage> {
 /// Options for webpload_source operation
 #[derive(Clone, Debug)]
 pub struct WebploadSourceOptions {
-    /// page: `i32` -> Load this page from the file
+    /// page: `i32` -> First page to load
     /// min: 0, max: 100000, default: 0
     pub page: i32,
-    /// n: `i32` -> Load this many pages
+    /// n: `i32` -> Number of pages to load, -1 for all
     /// min: -1, max: 100000, default: 1
     pub n: i32,
-    /// scale: `f64` -> Scale factor on load
+    /// scale: `f64` -> Factor to scale by
     /// min: 0, max: 1024, default: 1
     pub scale: f64,
     /// flags: `ForeignFlags` -> Flags for this file
@@ -11003,6 +12159,9 @@ pub struct WebploadSourceOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for WebploadSourceOptions {
@@ -11015,6 +12174,7 @@ impl std::default::Default for WebploadSourceOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
@@ -11052,6 +12212,13 @@ pub fn webpload_source_with_opts(
         let fail_on_in: i32 = webpload_source_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if webpload_source_options.revalidate {
+            1
+        } else {
+            0
+        };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_webpload_source(
             source_in,
             &mut out_out,
@@ -11069,6 +12236,8 @@ pub fn webpload_source_with_opts(
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
@@ -11099,13 +12268,13 @@ pub fn tiffload(filename: &str) -> Result<VipsImage> {
 /// Options for tiffload operation
 #[derive(Clone, Debug)]
 pub struct TiffloadOptions {
-    /// page: `i32` -> Load this page from the image
+    /// page: `i32` -> First page to load
     /// min: 0, max: 100000, default: 0
     pub page: i32,
-    /// subifd: `i32` -> Select subifd index
+    /// subifd: `i32` -> Subifd index
     /// min: -1, max: 100000, default: -1
     pub subifd: i32,
-    /// n: `i32` -> Load this many pages
+    /// n: `i32` -> Number of pages to load, -1 for all
     /// min: -1, max: 100000, default: 1
     pub n: i32,
     /// autorotate: `bool` -> Rotate image using orientation tag
@@ -11134,6 +12303,9 @@ pub struct TiffloadOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for TiffloadOptions {
@@ -11147,6 +12319,7 @@ impl std::default::Default for TiffloadOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
@@ -11184,6 +12357,9 @@ pub fn tiffload_with_opts(filename: &str, tiffload_options: &TiffloadOptions) ->
         let fail_on_in: i32 = tiffload_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if tiffload_options.revalidate { 1 } else { 0 };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_tiffload(
             filename_in.as_ptr(),
             &mut out_out,
@@ -11203,6 +12379,8 @@ pub fn tiffload_with_opts(filename: &str, tiffload_options: &TiffloadOptions) ->
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
@@ -11234,13 +12412,13 @@ pub fn tiffload_buffer(buffer: &[u8]) -> Result<VipsImage> {
 /// Options for tiffload_buffer operation
 #[derive(Clone, Debug)]
 pub struct TiffloadBufferOptions {
-    /// page: `i32` -> Load this page from the image
+    /// page: `i32` -> First page to load
     /// min: 0, max: 100000, default: 0
     pub page: i32,
-    /// subifd: `i32` -> Select subifd index
+    /// subifd: `i32` -> Subifd index
     /// min: -1, max: 100000, default: -1
     pub subifd: i32,
-    /// n: `i32` -> Load this many pages
+    /// n: `i32` -> Number of pages to load, -1 for all
     /// min: -1, max: 100000, default: 1
     pub n: i32,
     /// autorotate: `bool` -> Rotate image using orientation tag
@@ -11269,6 +12447,9 @@ pub struct TiffloadBufferOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for TiffloadBufferOptions {
@@ -11282,6 +12463,7 @@ impl std::default::Default for TiffloadBufferOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
@@ -11326,6 +12508,13 @@ pub fn tiffload_buffer_with_opts(
         let fail_on_in: i32 = tiffload_buffer_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if tiffload_buffer_options.revalidate {
+            1
+        } else {
+            0
+        };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_tiffload_buffer(
             buffer_in,
             buffer.len() as u64,
@@ -11346,6 +12535,8 @@ pub fn tiffload_buffer_with_opts(
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
@@ -11376,13 +12567,13 @@ pub fn tiffload_source(source: &VipsSource) -> Result<VipsImage> {
 /// Options for tiffload_source operation
 #[derive(Clone, Debug)]
 pub struct TiffloadSourceOptions {
-    /// page: `i32` -> Load this page from the image
+    /// page: `i32` -> First page to load
     /// min: 0, max: 100000, default: 0
     pub page: i32,
-    /// subifd: `i32` -> Select subifd index
+    /// subifd: `i32` -> Subifd index
     /// min: -1, max: 100000, default: -1
     pub subifd: i32,
-    /// n: `i32` -> Load this many pages
+    /// n: `i32` -> Number of pages to load, -1 for all
     /// min: -1, max: 100000, default: 1
     pub n: i32,
     /// autorotate: `bool` -> Rotate image using orientation tag
@@ -11411,6 +12602,9 @@ pub struct TiffloadSourceOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for TiffloadSourceOptions {
@@ -11424,6 +12618,7 @@ impl std::default::Default for TiffloadSourceOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
@@ -11468,6 +12663,13 @@ pub fn tiffload_source_with_opts(
         let fail_on_in: i32 = tiffload_source_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if tiffload_source_options.revalidate {
+            1
+        } else {
+            0
+        };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_tiffload_source(
             source_in,
             &mut out_out,
@@ -11487,12 +12689,231 @@ pub fn tiffload_source_with_opts(
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
             vips_op_response,
             VipsImage { ctx: out_out },
             Error::TiffloadSourceError,
+        )
+    }
+}
+
+/// VipsForeignLoadFitsFile (fitsload), load a FITS image (.fits, .fit, .fts), priority=-50, untrusted, is_a, get_flags, get_flags_filename, header, load
+/// filename: `&str` -> Filename to load from
+/// returns `VipsImage` - Output image
+pub fn fitsload(filename: &str) -> Result<VipsImage> {
+    unsafe {
+        let filename_in: CString = utils::new_c_string(filename)?;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let vips_op_response = bindings::vips_fitsload(filename_in.as_ptr(), &mut out_out, NULL);
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::FitsloadError,
+        )
+    }
+}
+
+/// Options for fitsload operation
+#[derive(Clone, Debug)]
+pub struct FitsloadOptions {
+    /// flags: `ForeignFlags` -> Flags for this file
+    ///  `None` -> VIPS_FOREIGN_NONE = 0 [DEFAULT]
+    ///  `Partial` -> VIPS_FOREIGN_PARTIAL = 1
+    ///  `Bigendian` -> VIPS_FOREIGN_BIGENDIAN = 2
+    ///  `Sequential` -> VIPS_FOREIGN_SEQUENTIAL = 4
+    ///  `All` -> VIPS_FOREIGN_ALL = 7
+    pub flags: ForeignFlags,
+    /// memory: `bool` -> Force open via memory
+    /// default: false
+    pub memory: bool,
+    /// access: `Access` -> Required access pattern for this file
+    ///  `Random` -> VIPS_ACCESS_RANDOM = 0 [DEFAULT]
+    ///  `Sequential` -> VIPS_ACCESS_SEQUENTIAL = 1
+    ///  `SequentialUnbuffered` -> VIPS_ACCESS_SEQUENTIAL_UNBUFFERED = 2
+    ///  `Last` -> VIPS_ACCESS_LAST = 3
+    pub access: Access,
+    /// fail_on: `FailOn` -> Error level to fail on
+    ///  `None` -> VIPS_FAIL_ON_NONE = 0 [DEFAULT]
+    ///  `Truncated` -> VIPS_FAIL_ON_TRUNCATED = 1
+    ///  `Error` -> VIPS_FAIL_ON_ERROR = 2
+    ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
+    ///  `Last` -> VIPS_FAIL_ON_LAST = 4
+    pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
+}
+
+impl std::default::Default for FitsloadOptions {
+    fn default() -> Self {
+        FitsloadOptions {
+            flags: ForeignFlags::None,
+            memory: false,
+            access: Access::Random,
+            fail_on: FailOn::None,
+            revalidate: false,
+        }
+    }
+}
+
+/// VipsForeignLoadFitsFile (fitsload), load a FITS image (.fits, .fit, .fts), priority=-50, untrusted, is_a, get_flags, get_flags_filename, header, load
+/// filename: `&str` -> Filename to load from
+/// fitsload_options: `&FitsloadOptions` -> optional arguments
+/// returns `VipsImage` - Output image
+pub fn fitsload_with_opts(filename: &str, fitsload_options: &FitsloadOptions) -> Result<VipsImage> {
+    unsafe {
+        let filename_in: CString = utils::new_c_string(filename)?;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let flags_in: i32 = fitsload_options.flags as i32;
+        let flags_in_name = utils::new_c_string("flags")?;
+
+        let memory_in: i32 = if fitsload_options.memory { 1 } else { 0 };
+        let memory_in_name = utils::new_c_string("memory")?;
+
+        let access_in: i32 = fitsload_options.access as i32;
+        let access_in_name = utils::new_c_string("access")?;
+
+        let fail_on_in: i32 = fitsload_options.fail_on as i32;
+        let fail_on_in_name = utils::new_c_string("fail-on")?;
+
+        let revalidate_in: i32 = if fitsload_options.revalidate { 1 } else { 0 };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
+        let vips_op_response = bindings::vips_fitsload(
+            filename_in.as_ptr(),
+            &mut out_out,
+            flags_in_name.as_ptr(),
+            flags_in,
+            memory_in_name.as_ptr(),
+            memory_in,
+            access_in_name.as_ptr(),
+            access_in,
+            fail_on_in_name.as_ptr(),
+            fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
+            NULL,
+        );
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::FitsloadError,
+        )
+    }
+}
+
+/// VipsForeignLoadOpenexr (openexrload), load an OpenEXR image (.exr), priority=200, untrusted, is_a, get_flags, get_flags_filename, header, load
+/// filename: `&str` -> Filename to load from
+/// returns `VipsImage` - Output image
+pub fn openexrload(filename: &str) -> Result<VipsImage> {
+    unsafe {
+        let filename_in: CString = utils::new_c_string(filename)?;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let vips_op_response = bindings::vips_openexrload(filename_in.as_ptr(), &mut out_out, NULL);
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::OpenexrloadError,
+        )
+    }
+}
+
+/// Options for openexrload operation
+#[derive(Clone, Debug)]
+pub struct OpenexrloadOptions {
+    /// flags: `ForeignFlags` -> Flags for this file
+    ///  `None` -> VIPS_FOREIGN_NONE = 0 [DEFAULT]
+    ///  `Partial` -> VIPS_FOREIGN_PARTIAL = 1
+    ///  `Bigendian` -> VIPS_FOREIGN_BIGENDIAN = 2
+    ///  `Sequential` -> VIPS_FOREIGN_SEQUENTIAL = 4
+    ///  `All` -> VIPS_FOREIGN_ALL = 7
+    pub flags: ForeignFlags,
+    /// memory: `bool` -> Force open via memory
+    /// default: false
+    pub memory: bool,
+    /// access: `Access` -> Required access pattern for this file
+    ///  `Random` -> VIPS_ACCESS_RANDOM = 0 [DEFAULT]
+    ///  `Sequential` -> VIPS_ACCESS_SEQUENTIAL = 1
+    ///  `SequentialUnbuffered` -> VIPS_ACCESS_SEQUENTIAL_UNBUFFERED = 2
+    ///  `Last` -> VIPS_ACCESS_LAST = 3
+    pub access: Access,
+    /// fail_on: `FailOn` -> Error level to fail on
+    ///  `None` -> VIPS_FAIL_ON_NONE = 0 [DEFAULT]
+    ///  `Truncated` -> VIPS_FAIL_ON_TRUNCATED = 1
+    ///  `Error` -> VIPS_FAIL_ON_ERROR = 2
+    ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
+    ///  `Last` -> VIPS_FAIL_ON_LAST = 4
+    pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
+}
+
+impl std::default::Default for OpenexrloadOptions {
+    fn default() -> Self {
+        OpenexrloadOptions {
+            flags: ForeignFlags::None,
+            memory: false,
+            access: Access::Random,
+            fail_on: FailOn::None,
+            revalidate: false,
+        }
+    }
+}
+
+/// VipsForeignLoadOpenexr (openexrload), load an OpenEXR image (.exr), priority=200, untrusted, is_a, get_flags, get_flags_filename, header, load
+/// filename: `&str` -> Filename to load from
+/// openexrload_options: `&OpenexrloadOptions` -> optional arguments
+/// returns `VipsImage` - Output image
+pub fn openexrload_with_opts(
+    filename: &str,
+    openexrload_options: &OpenexrloadOptions,
+) -> Result<VipsImage> {
+    unsafe {
+        let filename_in: CString = utils::new_c_string(filename)?;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let flags_in: i32 = openexrload_options.flags as i32;
+        let flags_in_name = utils::new_c_string("flags")?;
+
+        let memory_in: i32 = if openexrload_options.memory { 1 } else { 0 };
+        let memory_in_name = utils::new_c_string("memory")?;
+
+        let access_in: i32 = openexrload_options.access as i32;
+        let access_in_name = utils::new_c_string("access")?;
+
+        let fail_on_in: i32 = openexrload_options.fail_on as i32;
+        let fail_on_in_name = utils::new_c_string("fail-on")?;
+
+        let revalidate_in: i32 = if openexrload_options.revalidate { 1 } else { 0 };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
+        let vips_op_response = bindings::vips_openexrload(
+            filename_in.as_ptr(),
+            &mut out_out,
+            flags_in_name.as_ptr(),
+            flags_in,
+            memory_in_name.as_ptr(),
+            memory_in,
+            access_in_name.as_ptr(),
+            access_in,
+            fail_on_in_name.as_ptr(),
+            fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
+            NULL,
+        );
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::OpenexrloadError,
         )
     }
 }
@@ -11517,10 +12938,10 @@ pub fn heifload(filename: &str) -> Result<VipsImage> {
 /// Options for heifload operation
 #[derive(Clone, Debug)]
 pub struct HeifloadOptions {
-    /// page: `i32` -> Load this page from the file
+    /// page: `i32` -> First page to load
     /// min: 0, max: 100000, default: 0
     pub page: i32,
-    /// n: `i32` -> Load this many pages
+    /// n: `i32` -> Number of pages to load, -1 for all
     /// min: -1, max: 100000, default: 1
     pub n: i32,
     /// thumbnail: `bool` -> Fetch thumbnail image
@@ -11552,6 +12973,9 @@ pub struct HeifloadOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for HeifloadOptions {
@@ -11565,6 +12989,7 @@ impl std::default::Default for HeifloadOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
@@ -11602,6 +13027,9 @@ pub fn heifload_with_opts(filename: &str, heifload_options: &HeifloadOptions) ->
         let fail_on_in: i32 = heifload_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if heifload_options.revalidate { 1 } else { 0 };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_heifload(
             filename_in.as_ptr(),
             &mut out_out,
@@ -11621,6 +13049,8 @@ pub fn heifload_with_opts(filename: &str, heifload_options: &HeifloadOptions) ->
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
@@ -11652,10 +13082,10 @@ pub fn heifload_buffer(buffer: &[u8]) -> Result<VipsImage> {
 /// Options for heifload_buffer operation
 #[derive(Clone, Debug)]
 pub struct HeifloadBufferOptions {
-    /// page: `i32` -> Load this page from the file
+    /// page: `i32` -> First page to load
     /// min: 0, max: 100000, default: 0
     pub page: i32,
-    /// n: `i32` -> Load this many pages
+    /// n: `i32` -> Number of pages to load, -1 for all
     /// min: -1, max: 100000, default: 1
     pub n: i32,
     /// thumbnail: `bool` -> Fetch thumbnail image
@@ -11687,6 +13117,9 @@ pub struct HeifloadBufferOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for HeifloadBufferOptions {
@@ -11700,6 +13133,7 @@ impl std::default::Default for HeifloadBufferOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
@@ -11748,6 +13182,13 @@ pub fn heifload_buffer_with_opts(
         let fail_on_in: i32 = heifload_buffer_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if heifload_buffer_options.revalidate {
+            1
+        } else {
+            0
+        };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_heifload_buffer(
             buffer_in,
             buffer.len() as u64,
@@ -11768,6 +13209,8 @@ pub fn heifload_buffer_with_opts(
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
@@ -11798,10 +13241,10 @@ pub fn heifload_source(source: &VipsSource) -> Result<VipsImage> {
 /// Options for heifload_source operation
 #[derive(Clone, Debug)]
 pub struct HeifloadSourceOptions {
-    /// page: `i32` -> Load this page from the file
+    /// page: `i32` -> First page to load
     /// min: 0, max: 100000, default: 0
     pub page: i32,
-    /// n: `i32` -> Load this many pages
+    /// n: `i32` -> Number of pages to load, -1 for all
     /// min: -1, max: 100000, default: 1
     pub n: i32,
     /// thumbnail: `bool` -> Fetch thumbnail image
@@ -11833,6 +13276,9 @@ pub struct HeifloadSourceOptions {
     ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
     ///  `Last` -> VIPS_FAIL_ON_LAST = 4
     pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
 }
 
 impl std::default::Default for HeifloadSourceOptions {
@@ -11846,6 +13292,7 @@ impl std::default::Default for HeifloadSourceOptions {
             memory: false,
             access: Access::Random,
             fail_on: FailOn::None,
+            revalidate: false,
         }
     }
 }
@@ -11894,6 +13341,13 @@ pub fn heifload_source_with_opts(
         let fail_on_in: i32 = heifload_source_options.fail_on as i32;
         let fail_on_in_name = utils::new_c_string("fail-on")?;
 
+        let revalidate_in: i32 = if heifload_source_options.revalidate {
+            1
+        } else {
+            0
+        };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
         let vips_op_response = bindings::vips_heifload_source(
             source_in,
             &mut out_out,
@@ -11913,12 +13367,1469 @@ pub fn heifload_source_with_opts(
             access_in,
             fail_on_in_name.as_ptr(),
             fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
             NULL,
         );
         utils::result(
             vips_op_response,
             VipsImage { ctx: out_out },
             Error::HeifloadSourceError,
+        )
+    }
+}
+
+/// VipsForeignLoadMagick7File (magickload), load file with ImageMagick7, priority=-100, untrusted, is_a, get_flags, get_flags_filename, header
+/// filename: `&str` -> Filename to load from
+/// returns `VipsImage` - Output image
+pub fn magickload(filename: &str) -> Result<VipsImage> {
+    unsafe {
+        let filename_in: CString = utils::new_c_string(filename)?;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let vips_op_response = bindings::vips_magickload(filename_in.as_ptr(), &mut out_out, NULL);
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::MagickloadError,
+        )
+    }
+}
+
+/// Options for magickload operation
+#[derive(Clone, Debug)]
+pub struct MagickloadOptions {
+    /// density: `String` -> Canvas resolution for rendering vector formats like SVG
+    pub density: String,
+    /// page: `i32` -> First page to load
+    /// min: 0, max: 100000, default: 0
+    pub page: i32,
+    /// n: `i32` -> Number of pages to load, -1 for all
+    /// min: -1, max: 100000, default: 1
+    pub n: i32,
+    /// flags: `ForeignFlags` -> Flags for this file
+    ///  `None` -> VIPS_FOREIGN_NONE = 0 [DEFAULT]
+    ///  `Partial` -> VIPS_FOREIGN_PARTIAL = 1
+    ///  `Bigendian` -> VIPS_FOREIGN_BIGENDIAN = 2
+    ///  `Sequential` -> VIPS_FOREIGN_SEQUENTIAL = 4
+    ///  `All` -> VIPS_FOREIGN_ALL = 7
+    pub flags: ForeignFlags,
+    /// memory: `bool` -> Force open via memory
+    /// default: false
+    pub memory: bool,
+    /// access: `Access` -> Required access pattern for this file
+    ///  `Random` -> VIPS_ACCESS_RANDOM = 0 [DEFAULT]
+    ///  `Sequential` -> VIPS_ACCESS_SEQUENTIAL = 1
+    ///  `SequentialUnbuffered` -> VIPS_ACCESS_SEQUENTIAL_UNBUFFERED = 2
+    ///  `Last` -> VIPS_ACCESS_LAST = 3
+    pub access: Access,
+    /// fail_on: `FailOn` -> Error level to fail on
+    ///  `None` -> VIPS_FAIL_ON_NONE = 0 [DEFAULT]
+    ///  `Truncated` -> VIPS_FAIL_ON_TRUNCATED = 1
+    ///  `Error` -> VIPS_FAIL_ON_ERROR = 2
+    ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
+    ///  `Last` -> VIPS_FAIL_ON_LAST = 4
+    pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
+}
+
+impl std::default::Default for MagickloadOptions {
+    fn default() -> Self {
+        MagickloadOptions {
+            density: String::new(),
+            page: i32::from(0),
+            n: i32::from(1),
+            flags: ForeignFlags::None,
+            memory: false,
+            access: Access::Random,
+            fail_on: FailOn::None,
+            revalidate: false,
+        }
+    }
+}
+
+/// VipsForeignLoadMagick7File (magickload), load file with ImageMagick7, priority=-100, untrusted, is_a, get_flags, get_flags_filename, header
+/// filename: `&str` -> Filename to load from
+/// magickload_options: `&MagickloadOptions` -> optional arguments
+/// returns `VipsImage` - Output image
+pub fn magickload_with_opts(
+    filename: &str,
+    magickload_options: &MagickloadOptions,
+) -> Result<VipsImage> {
+    unsafe {
+        let filename_in: CString = utils::new_c_string(filename)?;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let density_in: CString = utils::new_c_string(&magickload_options.density)?;
+        let density_in_name = utils::new_c_string("density")?;
+
+        let page_in: i32 = magickload_options.page;
+        let page_in_name = utils::new_c_string("page")?;
+
+        let n_in: i32 = magickload_options.n;
+        let n_in_name = utils::new_c_string("n")?;
+
+        let flags_in: i32 = magickload_options.flags as i32;
+        let flags_in_name = utils::new_c_string("flags")?;
+
+        let memory_in: i32 = if magickload_options.memory { 1 } else { 0 };
+        let memory_in_name = utils::new_c_string("memory")?;
+
+        let access_in: i32 = magickload_options.access as i32;
+        let access_in_name = utils::new_c_string("access")?;
+
+        let fail_on_in: i32 = magickload_options.fail_on as i32;
+        let fail_on_in_name = utils::new_c_string("fail-on")?;
+
+        let revalidate_in: i32 = if magickload_options.revalidate { 1 } else { 0 };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
+        let vips_op_response = bindings::vips_magickload(
+            filename_in.as_ptr(),
+            &mut out_out,
+            density_in_name.as_ptr(),
+            density_in.as_ptr(),
+            page_in_name.as_ptr(),
+            page_in,
+            n_in_name.as_ptr(),
+            n_in,
+            flags_in_name.as_ptr(),
+            flags_in,
+            memory_in_name.as_ptr(),
+            memory_in,
+            access_in_name.as_ptr(),
+            access_in,
+            fail_on_in_name.as_ptr(),
+            fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
+            NULL,
+        );
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::MagickloadError,
+        )
+    }
+}
+
+/// VipsForeignLoadMagick7Buffer (magickload_buffer), load buffer with ImageMagick7, priority=-100, untrusted, is_a_buffer, get_flags, get_flags_filename, header
+/// buffer: `&[u8]` -> Buffer to load from
+/// returns `VipsImage` - Output image
+pub fn magickload_buffer(buffer: &[u8]) -> Result<VipsImage> {
+    unsafe {
+        let buffer_in: *mut c_void = buffer.as_ptr() as *mut c_void;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let vips_op_response =
+            bindings::vips_magickload_buffer(buffer_in, buffer.len() as u64, &mut out_out, NULL);
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::MagickloadBufferError,
+        )
+    }
+}
+
+/// Options for magickload_buffer operation
+#[derive(Clone, Debug)]
+pub struct MagickloadBufferOptions {
+    /// density: `String` -> Canvas resolution for rendering vector formats like SVG
+    pub density: String,
+    /// page: `i32` -> First page to load
+    /// min: 0, max: 100000, default: 0
+    pub page: i32,
+    /// n: `i32` -> Number of pages to load, -1 for all
+    /// min: -1, max: 100000, default: 1
+    pub n: i32,
+    /// flags: `ForeignFlags` -> Flags for this file
+    ///  `None` -> VIPS_FOREIGN_NONE = 0 [DEFAULT]
+    ///  `Partial` -> VIPS_FOREIGN_PARTIAL = 1
+    ///  `Bigendian` -> VIPS_FOREIGN_BIGENDIAN = 2
+    ///  `Sequential` -> VIPS_FOREIGN_SEQUENTIAL = 4
+    ///  `All` -> VIPS_FOREIGN_ALL = 7
+    pub flags: ForeignFlags,
+    /// memory: `bool` -> Force open via memory
+    /// default: false
+    pub memory: bool,
+    /// access: `Access` -> Required access pattern for this file
+    ///  `Random` -> VIPS_ACCESS_RANDOM = 0 [DEFAULT]
+    ///  `Sequential` -> VIPS_ACCESS_SEQUENTIAL = 1
+    ///  `SequentialUnbuffered` -> VIPS_ACCESS_SEQUENTIAL_UNBUFFERED = 2
+    ///  `Last` -> VIPS_ACCESS_LAST = 3
+    pub access: Access,
+    /// fail_on: `FailOn` -> Error level to fail on
+    ///  `None` -> VIPS_FAIL_ON_NONE = 0 [DEFAULT]
+    ///  `Truncated` -> VIPS_FAIL_ON_TRUNCATED = 1
+    ///  `Error` -> VIPS_FAIL_ON_ERROR = 2
+    ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
+    ///  `Last` -> VIPS_FAIL_ON_LAST = 4
+    pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
+}
+
+impl std::default::Default for MagickloadBufferOptions {
+    fn default() -> Self {
+        MagickloadBufferOptions {
+            density: String::new(),
+            page: i32::from(0),
+            n: i32::from(1),
+            flags: ForeignFlags::None,
+            memory: false,
+            access: Access::Random,
+            fail_on: FailOn::None,
+            revalidate: false,
+        }
+    }
+}
+
+/// VipsForeignLoadMagick7Buffer (magickload_buffer), load buffer with ImageMagick7, priority=-100, untrusted, is_a_buffer, get_flags, get_flags_filename, header
+/// buffer: `&[u8]` -> Buffer to load from
+/// magickload_buffer_options: `&MagickloadBufferOptions` -> optional arguments
+/// returns `VipsImage` - Output image
+pub fn magickload_buffer_with_opts(
+    buffer: &[u8],
+    magickload_buffer_options: &MagickloadBufferOptions,
+) -> Result<VipsImage> {
+    unsafe {
+        let buffer_in: *mut c_void = buffer.as_ptr() as *mut c_void;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let density_in: CString = utils::new_c_string(&magickload_buffer_options.density)?;
+        let density_in_name = utils::new_c_string("density")?;
+
+        let page_in: i32 = magickload_buffer_options.page;
+        let page_in_name = utils::new_c_string("page")?;
+
+        let n_in: i32 = magickload_buffer_options.n;
+        let n_in_name = utils::new_c_string("n")?;
+
+        let flags_in: i32 = magickload_buffer_options.flags as i32;
+        let flags_in_name = utils::new_c_string("flags")?;
+
+        let memory_in: i32 = if magickload_buffer_options.memory {
+            1
+        } else {
+            0
+        };
+        let memory_in_name = utils::new_c_string("memory")?;
+
+        let access_in: i32 = magickload_buffer_options.access as i32;
+        let access_in_name = utils::new_c_string("access")?;
+
+        let fail_on_in: i32 = magickload_buffer_options.fail_on as i32;
+        let fail_on_in_name = utils::new_c_string("fail-on")?;
+
+        let revalidate_in: i32 = if magickload_buffer_options.revalidate {
+            1
+        } else {
+            0
+        };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
+        let vips_op_response = bindings::vips_magickload_buffer(
+            buffer_in,
+            buffer.len() as u64,
+            &mut out_out,
+            density_in_name.as_ptr(),
+            density_in.as_ptr(),
+            page_in_name.as_ptr(),
+            page_in,
+            n_in_name.as_ptr(),
+            n_in,
+            flags_in_name.as_ptr(),
+            flags_in,
+            memory_in_name.as_ptr(),
+            memory_in,
+            access_in_name.as_ptr(),
+            access_in,
+            fail_on_in_name.as_ptr(),
+            fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
+            NULL,
+        );
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::MagickloadBufferError,
+        )
+    }
+}
+
+/// VipsForeignLoadPdfFile (pdfload), load PDF from file (.pdf), priority=0, untrusted, is_a, get_flags, get_flags_filename, header, load
+/// filename: `&str` -> Filename to load from
+/// returns `VipsImage` - Output image
+pub fn pdfload(filename: &str) -> Result<VipsImage> {
+    unsafe {
+        let filename_in: CString = utils::new_c_string(filename)?;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let vips_op_response = bindings::vips_pdfload(filename_in.as_ptr(), &mut out_out, NULL);
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::PdfloadError,
+        )
+    }
+}
+
+/// Options for pdfload operation
+#[derive(Clone, Debug)]
+pub struct PdfloadOptions {
+    /// page: `i32` -> First page to load
+    /// min: 0, max: 100000, default: 0
+    pub page: i32,
+    /// n: `i32` -> Number of pages to load, -1 for all
+    /// min: -1, max: 100000, default: 1
+    pub n: i32,
+    /// dpi: `f64` -> DPI to render at
+    /// min: 0.001, max: 100000, default: 72
+    pub dpi: f64,
+    /// scale: `f64` -> Factor to scale by
+    /// min: 0.001, max: 100000, default: 1
+    pub scale: f64,
+    /// background: `Vec<f64>` -> Background colour
+    pub background: Vec<f64>,
+    /// password: `String` -> Password to decrypt with
+    pub password: String,
+    /// flags: `ForeignFlags` -> Flags for this file
+    ///  `None` -> VIPS_FOREIGN_NONE = 0 [DEFAULT]
+    ///  `Partial` -> VIPS_FOREIGN_PARTIAL = 1
+    ///  `Bigendian` -> VIPS_FOREIGN_BIGENDIAN = 2
+    ///  `Sequential` -> VIPS_FOREIGN_SEQUENTIAL = 4
+    ///  `All` -> VIPS_FOREIGN_ALL = 7
+    pub flags: ForeignFlags,
+    /// memory: `bool` -> Force open via memory
+    /// default: false
+    pub memory: bool,
+    /// access: `Access` -> Required access pattern for this file
+    ///  `Random` -> VIPS_ACCESS_RANDOM = 0 [DEFAULT]
+    ///  `Sequential` -> VIPS_ACCESS_SEQUENTIAL = 1
+    ///  `SequentialUnbuffered` -> VIPS_ACCESS_SEQUENTIAL_UNBUFFERED = 2
+    ///  `Last` -> VIPS_ACCESS_LAST = 3
+    pub access: Access,
+    /// fail_on: `FailOn` -> Error level to fail on
+    ///  `None` -> VIPS_FAIL_ON_NONE = 0 [DEFAULT]
+    ///  `Truncated` -> VIPS_FAIL_ON_TRUNCATED = 1
+    ///  `Error` -> VIPS_FAIL_ON_ERROR = 2
+    ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
+    ///  `Last` -> VIPS_FAIL_ON_LAST = 4
+    pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
+}
+
+impl std::default::Default for PdfloadOptions {
+    fn default() -> Self {
+        PdfloadOptions {
+            page: i32::from(0),
+            n: i32::from(1),
+            dpi: f64::from(72),
+            scale: f64::from(1),
+            background: Vec::new(),
+            password: String::new(),
+            flags: ForeignFlags::None,
+            memory: false,
+            access: Access::Random,
+            fail_on: FailOn::None,
+            revalidate: false,
+        }
+    }
+}
+
+/// VipsForeignLoadPdfFile (pdfload), load PDF from file (.pdf), priority=0, untrusted, is_a, get_flags, get_flags_filename, header, load
+/// filename: `&str` -> Filename to load from
+/// pdfload_options: `&PdfloadOptions` -> optional arguments
+/// returns `VipsImage` - Output image
+pub fn pdfload_with_opts(filename: &str, pdfload_options: &PdfloadOptions) -> Result<VipsImage> {
+    unsafe {
+        let filename_in: CString = utils::new_c_string(filename)?;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let page_in: i32 = pdfload_options.page;
+        let page_in_name = utils::new_c_string("page")?;
+
+        let n_in: i32 = pdfload_options.n;
+        let n_in_name = utils::new_c_string("n")?;
+
+        let dpi_in: f64 = pdfload_options.dpi;
+        let dpi_in_name = utils::new_c_string("dpi")?;
+
+        let scale_in: f64 = pdfload_options.scale;
+        let scale_in_name = utils::new_c_string("scale")?;
+
+        let background_wrapper =
+            utils::VipsArrayDoubleWrapper::from(&pdfload_options.background[..]);
+        let background_in = background_wrapper.ctx;
+        let background_in_name = utils::new_c_string("background")?;
+
+        let password_in: CString = utils::new_c_string(&pdfload_options.password)?;
+        let password_in_name = utils::new_c_string("password")?;
+
+        let flags_in: i32 = pdfload_options.flags as i32;
+        let flags_in_name = utils::new_c_string("flags")?;
+
+        let memory_in: i32 = if pdfload_options.memory { 1 } else { 0 };
+        let memory_in_name = utils::new_c_string("memory")?;
+
+        let access_in: i32 = pdfload_options.access as i32;
+        let access_in_name = utils::new_c_string("access")?;
+
+        let fail_on_in: i32 = pdfload_options.fail_on as i32;
+        let fail_on_in_name = utils::new_c_string("fail-on")?;
+
+        let revalidate_in: i32 = if pdfload_options.revalidate { 1 } else { 0 };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
+        let vips_op_response = bindings::vips_pdfload(
+            filename_in.as_ptr(),
+            &mut out_out,
+            page_in_name.as_ptr(),
+            page_in,
+            n_in_name.as_ptr(),
+            n_in,
+            dpi_in_name.as_ptr(),
+            dpi_in,
+            scale_in_name.as_ptr(),
+            scale_in,
+            background_in_name.as_ptr(),
+            background_in,
+            password_in_name.as_ptr(),
+            password_in.as_ptr(),
+            flags_in_name.as_ptr(),
+            flags_in,
+            memory_in_name.as_ptr(),
+            memory_in,
+            access_in_name.as_ptr(),
+            access_in,
+            fail_on_in_name.as_ptr(),
+            fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
+            NULL,
+        );
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::PdfloadError,
+        )
+    }
+}
+
+/// VipsForeignLoadPdfBuffer (pdfload_buffer), load PDF from buffer, priority=0, untrusted, is_a_buffer, get_flags, get_flags_filename, header, load
+/// buffer: `&[u8]` -> Buffer to load from
+/// returns `VipsImage` - Output image
+pub fn pdfload_buffer(buffer: &[u8]) -> Result<VipsImage> {
+    unsafe {
+        let buffer_in: *mut c_void = buffer.as_ptr() as *mut c_void;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let vips_op_response =
+            bindings::vips_pdfload_buffer(buffer_in, buffer.len() as u64, &mut out_out, NULL);
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::PdfloadBufferError,
+        )
+    }
+}
+
+/// Options for pdfload_buffer operation
+#[derive(Clone, Debug)]
+pub struct PdfloadBufferOptions {
+    /// page: `i32` -> First page to load
+    /// min: 0, max: 100000, default: 0
+    pub page: i32,
+    /// n: `i32` -> Number of pages to load, -1 for all
+    /// min: -1, max: 100000, default: 1
+    pub n: i32,
+    /// dpi: `f64` -> DPI to render at
+    /// min: 0.001, max: 100000, default: 72
+    pub dpi: f64,
+    /// scale: `f64` -> Factor to scale by
+    /// min: 0.001, max: 100000, default: 1
+    pub scale: f64,
+    /// background: `Vec<f64>` -> Background colour
+    pub background: Vec<f64>,
+    /// password: `String` -> Password to decrypt with
+    pub password: String,
+    /// flags: `ForeignFlags` -> Flags for this file
+    ///  `None` -> VIPS_FOREIGN_NONE = 0 [DEFAULT]
+    ///  `Partial` -> VIPS_FOREIGN_PARTIAL = 1
+    ///  `Bigendian` -> VIPS_FOREIGN_BIGENDIAN = 2
+    ///  `Sequential` -> VIPS_FOREIGN_SEQUENTIAL = 4
+    ///  `All` -> VIPS_FOREIGN_ALL = 7
+    pub flags: ForeignFlags,
+    /// memory: `bool` -> Force open via memory
+    /// default: false
+    pub memory: bool,
+    /// access: `Access` -> Required access pattern for this file
+    ///  `Random` -> VIPS_ACCESS_RANDOM = 0 [DEFAULT]
+    ///  `Sequential` -> VIPS_ACCESS_SEQUENTIAL = 1
+    ///  `SequentialUnbuffered` -> VIPS_ACCESS_SEQUENTIAL_UNBUFFERED = 2
+    ///  `Last` -> VIPS_ACCESS_LAST = 3
+    pub access: Access,
+    /// fail_on: `FailOn` -> Error level to fail on
+    ///  `None` -> VIPS_FAIL_ON_NONE = 0 [DEFAULT]
+    ///  `Truncated` -> VIPS_FAIL_ON_TRUNCATED = 1
+    ///  `Error` -> VIPS_FAIL_ON_ERROR = 2
+    ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
+    ///  `Last` -> VIPS_FAIL_ON_LAST = 4
+    pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
+}
+
+impl std::default::Default for PdfloadBufferOptions {
+    fn default() -> Self {
+        PdfloadBufferOptions {
+            page: i32::from(0),
+            n: i32::from(1),
+            dpi: f64::from(72),
+            scale: f64::from(1),
+            background: Vec::new(),
+            password: String::new(),
+            flags: ForeignFlags::None,
+            memory: false,
+            access: Access::Random,
+            fail_on: FailOn::None,
+            revalidate: false,
+        }
+    }
+}
+
+/// VipsForeignLoadPdfBuffer (pdfload_buffer), load PDF from buffer, priority=0, untrusted, is_a_buffer, get_flags, get_flags_filename, header, load
+/// buffer: `&[u8]` -> Buffer to load from
+/// pdfload_buffer_options: `&PdfloadBufferOptions` -> optional arguments
+/// returns `VipsImage` - Output image
+pub fn pdfload_buffer_with_opts(
+    buffer: &[u8],
+    pdfload_buffer_options: &PdfloadBufferOptions,
+) -> Result<VipsImage> {
+    unsafe {
+        let buffer_in: *mut c_void = buffer.as_ptr() as *mut c_void;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let page_in: i32 = pdfload_buffer_options.page;
+        let page_in_name = utils::new_c_string("page")?;
+
+        let n_in: i32 = pdfload_buffer_options.n;
+        let n_in_name = utils::new_c_string("n")?;
+
+        let dpi_in: f64 = pdfload_buffer_options.dpi;
+        let dpi_in_name = utils::new_c_string("dpi")?;
+
+        let scale_in: f64 = pdfload_buffer_options.scale;
+        let scale_in_name = utils::new_c_string("scale")?;
+
+        let background_wrapper =
+            utils::VipsArrayDoubleWrapper::from(&pdfload_buffer_options.background[..]);
+        let background_in = background_wrapper.ctx;
+        let background_in_name = utils::new_c_string("background")?;
+
+        let password_in: CString = utils::new_c_string(&pdfload_buffer_options.password)?;
+        let password_in_name = utils::new_c_string("password")?;
+
+        let flags_in: i32 = pdfload_buffer_options.flags as i32;
+        let flags_in_name = utils::new_c_string("flags")?;
+
+        let memory_in: i32 = if pdfload_buffer_options.memory { 1 } else { 0 };
+        let memory_in_name = utils::new_c_string("memory")?;
+
+        let access_in: i32 = pdfload_buffer_options.access as i32;
+        let access_in_name = utils::new_c_string("access")?;
+
+        let fail_on_in: i32 = pdfload_buffer_options.fail_on as i32;
+        let fail_on_in_name = utils::new_c_string("fail-on")?;
+
+        let revalidate_in: i32 = if pdfload_buffer_options.revalidate {
+            1
+        } else {
+            0
+        };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
+        let vips_op_response = bindings::vips_pdfload_buffer(
+            buffer_in,
+            buffer.len() as u64,
+            &mut out_out,
+            page_in_name.as_ptr(),
+            page_in,
+            n_in_name.as_ptr(),
+            n_in,
+            dpi_in_name.as_ptr(),
+            dpi_in,
+            scale_in_name.as_ptr(),
+            scale_in,
+            background_in_name.as_ptr(),
+            background_in,
+            password_in_name.as_ptr(),
+            password_in.as_ptr(),
+            flags_in_name.as_ptr(),
+            flags_in,
+            memory_in_name.as_ptr(),
+            memory_in,
+            access_in_name.as_ptr(),
+            access_in,
+            fail_on_in_name.as_ptr(),
+            fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
+            NULL,
+        );
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::PdfloadBufferError,
+        )
+    }
+}
+
+/// VipsForeignLoadPdfSource (pdfload_source), load PDF from source, priority=0, untrusted, is_a_source, get_flags, get_flags_filename, header, load
+/// source: `&VipsSource` -> Source to load from
+/// returns `VipsImage` - Output image
+pub fn pdfload_source(source: &VipsSource) -> Result<VipsImage> {
+    unsafe {
+        let source_in: *mut bindings::VipsSource = source.ctx;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let vips_op_response = bindings::vips_pdfload_source(source_in, &mut out_out, NULL);
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::PdfloadSourceError,
+        )
+    }
+}
+
+/// Options for pdfload_source operation
+#[derive(Clone, Debug)]
+pub struct PdfloadSourceOptions {
+    /// page: `i32` -> First page to load
+    /// min: 0, max: 100000, default: 0
+    pub page: i32,
+    /// n: `i32` -> Number of pages to load, -1 for all
+    /// min: -1, max: 100000, default: 1
+    pub n: i32,
+    /// dpi: `f64` -> DPI to render at
+    /// min: 0.001, max: 100000, default: 72
+    pub dpi: f64,
+    /// scale: `f64` -> Factor to scale by
+    /// min: 0.001, max: 100000, default: 1
+    pub scale: f64,
+    /// background: `Vec<f64>` -> Background colour
+    pub background: Vec<f64>,
+    /// password: `String` -> Password to decrypt with
+    pub password: String,
+    /// flags: `ForeignFlags` -> Flags for this file
+    ///  `None` -> VIPS_FOREIGN_NONE = 0 [DEFAULT]
+    ///  `Partial` -> VIPS_FOREIGN_PARTIAL = 1
+    ///  `Bigendian` -> VIPS_FOREIGN_BIGENDIAN = 2
+    ///  `Sequential` -> VIPS_FOREIGN_SEQUENTIAL = 4
+    ///  `All` -> VIPS_FOREIGN_ALL = 7
+    pub flags: ForeignFlags,
+    /// memory: `bool` -> Force open via memory
+    /// default: false
+    pub memory: bool,
+    /// access: `Access` -> Required access pattern for this file
+    ///  `Random` -> VIPS_ACCESS_RANDOM = 0 [DEFAULT]
+    ///  `Sequential` -> VIPS_ACCESS_SEQUENTIAL = 1
+    ///  `SequentialUnbuffered` -> VIPS_ACCESS_SEQUENTIAL_UNBUFFERED = 2
+    ///  `Last` -> VIPS_ACCESS_LAST = 3
+    pub access: Access,
+    /// fail_on: `FailOn` -> Error level to fail on
+    ///  `None` -> VIPS_FAIL_ON_NONE = 0 [DEFAULT]
+    ///  `Truncated` -> VIPS_FAIL_ON_TRUNCATED = 1
+    ///  `Error` -> VIPS_FAIL_ON_ERROR = 2
+    ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
+    ///  `Last` -> VIPS_FAIL_ON_LAST = 4
+    pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
+}
+
+impl std::default::Default for PdfloadSourceOptions {
+    fn default() -> Self {
+        PdfloadSourceOptions {
+            page: i32::from(0),
+            n: i32::from(1),
+            dpi: f64::from(72),
+            scale: f64::from(1),
+            background: Vec::new(),
+            password: String::new(),
+            flags: ForeignFlags::None,
+            memory: false,
+            access: Access::Random,
+            fail_on: FailOn::None,
+            revalidate: false,
+        }
+    }
+}
+
+/// VipsForeignLoadPdfSource (pdfload_source), load PDF from source, priority=0, untrusted, is_a_source, get_flags, get_flags_filename, header, load
+/// source: `&VipsSource` -> Source to load from
+/// pdfload_source_options: `&PdfloadSourceOptions` -> optional arguments
+/// returns `VipsImage` - Output image
+pub fn pdfload_source_with_opts(
+    source: &VipsSource,
+    pdfload_source_options: &PdfloadSourceOptions,
+) -> Result<VipsImage> {
+    unsafe {
+        let source_in: *mut bindings::VipsSource = source.ctx;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let page_in: i32 = pdfload_source_options.page;
+        let page_in_name = utils::new_c_string("page")?;
+
+        let n_in: i32 = pdfload_source_options.n;
+        let n_in_name = utils::new_c_string("n")?;
+
+        let dpi_in: f64 = pdfload_source_options.dpi;
+        let dpi_in_name = utils::new_c_string("dpi")?;
+
+        let scale_in: f64 = pdfload_source_options.scale;
+        let scale_in_name = utils::new_c_string("scale")?;
+
+        let background_wrapper =
+            utils::VipsArrayDoubleWrapper::from(&pdfload_source_options.background[..]);
+        let background_in = background_wrapper.ctx;
+        let background_in_name = utils::new_c_string("background")?;
+
+        let password_in: CString = utils::new_c_string(&pdfload_source_options.password)?;
+        let password_in_name = utils::new_c_string("password")?;
+
+        let flags_in: i32 = pdfload_source_options.flags as i32;
+        let flags_in_name = utils::new_c_string("flags")?;
+
+        let memory_in: i32 = if pdfload_source_options.memory { 1 } else { 0 };
+        let memory_in_name = utils::new_c_string("memory")?;
+
+        let access_in: i32 = pdfload_source_options.access as i32;
+        let access_in_name = utils::new_c_string("access")?;
+
+        let fail_on_in: i32 = pdfload_source_options.fail_on as i32;
+        let fail_on_in_name = utils::new_c_string("fail-on")?;
+
+        let revalidate_in: i32 = if pdfload_source_options.revalidate {
+            1
+        } else {
+            0
+        };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
+        let vips_op_response = bindings::vips_pdfload_source(
+            source_in,
+            &mut out_out,
+            page_in_name.as_ptr(),
+            page_in,
+            n_in_name.as_ptr(),
+            n_in,
+            dpi_in_name.as_ptr(),
+            dpi_in,
+            scale_in_name.as_ptr(),
+            scale_in,
+            background_in_name.as_ptr(),
+            background_in,
+            password_in_name.as_ptr(),
+            password_in.as_ptr(),
+            flags_in_name.as_ptr(),
+            flags_in,
+            memory_in_name.as_ptr(),
+            memory_in,
+            access_in_name.as_ptr(),
+            access_in,
+            fail_on_in_name.as_ptr(),
+            fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
+            NULL,
+        );
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::PdfloadSourceError,
+        )
+    }
+}
+
+/// VipsForeignLoadOpenslideFile (openslideload), load file with OpenSlide (.svs, .vms, .vmu, .ndpi, .scn, .mrxs, .svslide, .tif, .bif), priority=100, untrusted, is_a, get_flags, get_flags_filename, header, load
+/// filename: `&str` -> Filename to load from
+/// returns `VipsImage` - Output image
+pub fn openslideload(filename: &str) -> Result<VipsImage> {
+    unsafe {
+        let filename_in: CString = utils::new_c_string(filename)?;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let vips_op_response =
+            bindings::vips_openslideload(filename_in.as_ptr(), &mut out_out, NULL);
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::OpenslideloadError,
+        )
+    }
+}
+
+/// Options for openslideload operation
+#[derive(Clone, Debug)]
+pub struct OpenslideloadOptions {
+    /// level: `i32` -> Load this level from the file
+    /// min: 0, max: 100000, default: 0
+    pub level: i32,
+    /// autocrop: `bool` -> Crop to image bounds
+    /// default: false
+    pub autocrop: bool,
+    /// associated: `String` -> Load this associated image
+    pub associated: String,
+    /// attach_associated: `bool` -> Attach all associated images
+    /// default: false
+    pub attach_associated: bool,
+    /// rgb: `bool` -> Output RGB (not RGBA)
+    /// default: false
+    pub rgb: bool,
+    /// flags: `ForeignFlags` -> Flags for this file
+    ///  `None` -> VIPS_FOREIGN_NONE = 0 [DEFAULT]
+    ///  `Partial` -> VIPS_FOREIGN_PARTIAL = 1
+    ///  `Bigendian` -> VIPS_FOREIGN_BIGENDIAN = 2
+    ///  `Sequential` -> VIPS_FOREIGN_SEQUENTIAL = 4
+    ///  `All` -> VIPS_FOREIGN_ALL = 7
+    pub flags: ForeignFlags,
+    /// memory: `bool` -> Force open via memory
+    /// default: false
+    pub memory: bool,
+    /// access: `Access` -> Required access pattern for this file
+    ///  `Random` -> VIPS_ACCESS_RANDOM = 0 [DEFAULT]
+    ///  `Sequential` -> VIPS_ACCESS_SEQUENTIAL = 1
+    ///  `SequentialUnbuffered` -> VIPS_ACCESS_SEQUENTIAL_UNBUFFERED = 2
+    ///  `Last` -> VIPS_ACCESS_LAST = 3
+    pub access: Access,
+    /// fail_on: `FailOn` -> Error level to fail on
+    ///  `None` -> VIPS_FAIL_ON_NONE = 0 [DEFAULT]
+    ///  `Truncated` -> VIPS_FAIL_ON_TRUNCATED = 1
+    ///  `Error` -> VIPS_FAIL_ON_ERROR = 2
+    ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
+    ///  `Last` -> VIPS_FAIL_ON_LAST = 4
+    pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
+}
+
+impl std::default::Default for OpenslideloadOptions {
+    fn default() -> Self {
+        OpenslideloadOptions {
+            level: i32::from(0),
+            autocrop: false,
+            associated: String::new(),
+            attach_associated: false,
+            rgb: false,
+            flags: ForeignFlags::None,
+            memory: false,
+            access: Access::Random,
+            fail_on: FailOn::None,
+            revalidate: false,
+        }
+    }
+}
+
+/// VipsForeignLoadOpenslideFile (openslideload), load file with OpenSlide (.svs, .vms, .vmu, .ndpi, .scn, .mrxs, .svslide, .tif, .bif), priority=100, untrusted, is_a, get_flags, get_flags_filename, header, load
+/// filename: `&str` -> Filename to load from
+/// openslideload_options: `&OpenslideloadOptions` -> optional arguments
+/// returns `VipsImage` - Output image
+pub fn openslideload_with_opts(
+    filename: &str,
+    openslideload_options: &OpenslideloadOptions,
+) -> Result<VipsImage> {
+    unsafe {
+        let filename_in: CString = utils::new_c_string(filename)?;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let level_in: i32 = openslideload_options.level;
+        let level_in_name = utils::new_c_string("level")?;
+
+        let autocrop_in: i32 = if openslideload_options.autocrop { 1 } else { 0 };
+        let autocrop_in_name = utils::new_c_string("autocrop")?;
+
+        let associated_in: CString = utils::new_c_string(&openslideload_options.associated)?;
+        let associated_in_name = utils::new_c_string("associated")?;
+
+        let attach_associated_in: i32 = if openslideload_options.attach_associated {
+            1
+        } else {
+            0
+        };
+        let attach_associated_in_name = utils::new_c_string("attach-associated")?;
+
+        let rgb_in: i32 = if openslideload_options.rgb { 1 } else { 0 };
+        let rgb_in_name = utils::new_c_string("rgb")?;
+
+        let flags_in: i32 = openslideload_options.flags as i32;
+        let flags_in_name = utils::new_c_string("flags")?;
+
+        let memory_in: i32 = if openslideload_options.memory { 1 } else { 0 };
+        let memory_in_name = utils::new_c_string("memory")?;
+
+        let access_in: i32 = openslideload_options.access as i32;
+        let access_in_name = utils::new_c_string("access")?;
+
+        let fail_on_in: i32 = openslideload_options.fail_on as i32;
+        let fail_on_in_name = utils::new_c_string("fail-on")?;
+
+        let revalidate_in: i32 = if openslideload_options.revalidate {
+            1
+        } else {
+            0
+        };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
+        let vips_op_response = bindings::vips_openslideload(
+            filename_in.as_ptr(),
+            &mut out_out,
+            level_in_name.as_ptr(),
+            level_in,
+            autocrop_in_name.as_ptr(),
+            autocrop_in,
+            associated_in_name.as_ptr(),
+            associated_in.as_ptr(),
+            attach_associated_in_name.as_ptr(),
+            attach_associated_in,
+            rgb_in_name.as_ptr(),
+            rgb_in,
+            flags_in_name.as_ptr(),
+            flags_in,
+            memory_in_name.as_ptr(),
+            memory_in,
+            access_in_name.as_ptr(),
+            access_in,
+            fail_on_in_name.as_ptr(),
+            fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
+            NULL,
+        );
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::OpenslideloadError,
+        )
+    }
+}
+
+/// VipsForeignLoadOpenslideSource (openslideload_source), load source with OpenSlide, priority=100, untrusted, is_a_source, get_flags, get_flags_filename, header, load
+/// source: `&VipsSource` -> Source to load from
+/// returns `VipsImage` - Output image
+pub fn openslideload_source(source: &VipsSource) -> Result<VipsImage> {
+    unsafe {
+        let source_in: *mut bindings::VipsSource = source.ctx;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let vips_op_response = bindings::vips_openslideload_source(source_in, &mut out_out, NULL);
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::OpenslideloadSourceError,
+        )
+    }
+}
+
+/// Options for openslideload_source operation
+#[derive(Clone, Debug)]
+pub struct OpenslideloadSourceOptions {
+    /// level: `i32` -> Load this level from the file
+    /// min: 0, max: 100000, default: 0
+    pub level: i32,
+    /// autocrop: `bool` -> Crop to image bounds
+    /// default: false
+    pub autocrop: bool,
+    /// associated: `String` -> Load this associated image
+    pub associated: String,
+    /// attach_associated: `bool` -> Attach all associated images
+    /// default: false
+    pub attach_associated: bool,
+    /// rgb: `bool` -> Output RGB (not RGBA)
+    /// default: false
+    pub rgb: bool,
+    /// flags: `ForeignFlags` -> Flags for this file
+    ///  `None` -> VIPS_FOREIGN_NONE = 0 [DEFAULT]
+    ///  `Partial` -> VIPS_FOREIGN_PARTIAL = 1
+    ///  `Bigendian` -> VIPS_FOREIGN_BIGENDIAN = 2
+    ///  `Sequential` -> VIPS_FOREIGN_SEQUENTIAL = 4
+    ///  `All` -> VIPS_FOREIGN_ALL = 7
+    pub flags: ForeignFlags,
+    /// memory: `bool` -> Force open via memory
+    /// default: false
+    pub memory: bool,
+    /// access: `Access` -> Required access pattern for this file
+    ///  `Random` -> VIPS_ACCESS_RANDOM = 0 [DEFAULT]
+    ///  `Sequential` -> VIPS_ACCESS_SEQUENTIAL = 1
+    ///  `SequentialUnbuffered` -> VIPS_ACCESS_SEQUENTIAL_UNBUFFERED = 2
+    ///  `Last` -> VIPS_ACCESS_LAST = 3
+    pub access: Access,
+    /// fail_on: `FailOn` -> Error level to fail on
+    ///  `None` -> VIPS_FAIL_ON_NONE = 0 [DEFAULT]
+    ///  `Truncated` -> VIPS_FAIL_ON_TRUNCATED = 1
+    ///  `Error` -> VIPS_FAIL_ON_ERROR = 2
+    ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
+    ///  `Last` -> VIPS_FAIL_ON_LAST = 4
+    pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
+}
+
+impl std::default::Default for OpenslideloadSourceOptions {
+    fn default() -> Self {
+        OpenslideloadSourceOptions {
+            level: i32::from(0),
+            autocrop: false,
+            associated: String::new(),
+            attach_associated: false,
+            rgb: false,
+            flags: ForeignFlags::None,
+            memory: false,
+            access: Access::Random,
+            fail_on: FailOn::None,
+            revalidate: false,
+        }
+    }
+}
+
+/// VipsForeignLoadOpenslideSource (openslideload_source), load source with OpenSlide, priority=100, untrusted, is_a_source, get_flags, get_flags_filename, header, load
+/// source: `&VipsSource` -> Source to load from
+/// openslideload_source_options: `&OpenslideloadSourceOptions` -> optional arguments
+/// returns `VipsImage` - Output image
+pub fn openslideload_source_with_opts(
+    source: &VipsSource,
+    openslideload_source_options: &OpenslideloadSourceOptions,
+) -> Result<VipsImage> {
+    unsafe {
+        let source_in: *mut bindings::VipsSource = source.ctx;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let level_in: i32 = openslideload_source_options.level;
+        let level_in_name = utils::new_c_string("level")?;
+
+        let autocrop_in: i32 = if openslideload_source_options.autocrop {
+            1
+        } else {
+            0
+        };
+        let autocrop_in_name = utils::new_c_string("autocrop")?;
+
+        let associated_in: CString = utils::new_c_string(&openslideload_source_options.associated)?;
+        let associated_in_name = utils::new_c_string("associated")?;
+
+        let attach_associated_in: i32 = if openslideload_source_options.attach_associated {
+            1
+        } else {
+            0
+        };
+        let attach_associated_in_name = utils::new_c_string("attach-associated")?;
+
+        let rgb_in: i32 = if openslideload_source_options.rgb {
+            1
+        } else {
+            0
+        };
+        let rgb_in_name = utils::new_c_string("rgb")?;
+
+        let flags_in: i32 = openslideload_source_options.flags as i32;
+        let flags_in_name = utils::new_c_string("flags")?;
+
+        let memory_in: i32 = if openslideload_source_options.memory {
+            1
+        } else {
+            0
+        };
+        let memory_in_name = utils::new_c_string("memory")?;
+
+        let access_in: i32 = openslideload_source_options.access as i32;
+        let access_in_name = utils::new_c_string("access")?;
+
+        let fail_on_in: i32 = openslideload_source_options.fail_on as i32;
+        let fail_on_in_name = utils::new_c_string("fail-on")?;
+
+        let revalidate_in: i32 = if openslideload_source_options.revalidate {
+            1
+        } else {
+            0
+        };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
+        let vips_op_response = bindings::vips_openslideload_source(
+            source_in,
+            &mut out_out,
+            level_in_name.as_ptr(),
+            level_in,
+            autocrop_in_name.as_ptr(),
+            autocrop_in,
+            associated_in_name.as_ptr(),
+            associated_in.as_ptr(),
+            attach_associated_in_name.as_ptr(),
+            attach_associated_in,
+            rgb_in_name.as_ptr(),
+            rgb_in,
+            flags_in_name.as_ptr(),
+            flags_in,
+            memory_in_name.as_ptr(),
+            memory_in,
+            access_in_name.as_ptr(),
+            access_in,
+            fail_on_in_name.as_ptr(),
+            fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
+            NULL,
+        );
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::OpenslideloadSourceError,
+        )
+    }
+}
+
+/// VipsForeignLoadJxlFile (jxlload), load JPEG-XL image (.jxl), priority=0, untrusted, is_a, get_flags, header, load
+/// filename: `&str` -> Filename to load from
+/// returns `VipsImage` - Output image
+pub fn jxlload(filename: &str) -> Result<VipsImage> {
+    unsafe {
+        let filename_in: CString = utils::new_c_string(filename)?;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let vips_op_response = bindings::vips_jxlload(filename_in.as_ptr(), &mut out_out, NULL);
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::JxlloadError,
+        )
+    }
+}
+
+/// Options for jxlload operation
+#[derive(Clone, Debug)]
+pub struct JxlloadOptions {
+    /// flags: `ForeignFlags` -> Flags for this file
+    ///  `None` -> VIPS_FOREIGN_NONE = 0 [DEFAULT]
+    ///  `Partial` -> VIPS_FOREIGN_PARTIAL = 1
+    ///  `Bigendian` -> VIPS_FOREIGN_BIGENDIAN = 2
+    ///  `Sequential` -> VIPS_FOREIGN_SEQUENTIAL = 4
+    ///  `All` -> VIPS_FOREIGN_ALL = 7
+    pub flags: ForeignFlags,
+    /// memory: `bool` -> Force open via memory
+    /// default: false
+    pub memory: bool,
+    /// access: `Access` -> Required access pattern for this file
+    ///  `Random` -> VIPS_ACCESS_RANDOM = 0 [DEFAULT]
+    ///  `Sequential` -> VIPS_ACCESS_SEQUENTIAL = 1
+    ///  `SequentialUnbuffered` -> VIPS_ACCESS_SEQUENTIAL_UNBUFFERED = 2
+    ///  `Last` -> VIPS_ACCESS_LAST = 3
+    pub access: Access,
+    /// fail_on: `FailOn` -> Error level to fail on
+    ///  `None` -> VIPS_FAIL_ON_NONE = 0 [DEFAULT]
+    ///  `Truncated` -> VIPS_FAIL_ON_TRUNCATED = 1
+    ///  `Error` -> VIPS_FAIL_ON_ERROR = 2
+    ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
+    ///  `Last` -> VIPS_FAIL_ON_LAST = 4
+    pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
+}
+
+impl std::default::Default for JxlloadOptions {
+    fn default() -> Self {
+        JxlloadOptions {
+            flags: ForeignFlags::None,
+            memory: false,
+            access: Access::Random,
+            fail_on: FailOn::None,
+            revalidate: false,
+        }
+    }
+}
+
+/// VipsForeignLoadJxlFile (jxlload), load JPEG-XL image (.jxl), priority=0, untrusted, is_a, get_flags, header, load
+/// filename: `&str` -> Filename to load from
+/// jxlload_options: `&JxlloadOptions` -> optional arguments
+/// returns `VipsImage` - Output image
+pub fn jxlload_with_opts(filename: &str, jxlload_options: &JxlloadOptions) -> Result<VipsImage> {
+    unsafe {
+        let filename_in: CString = utils::new_c_string(filename)?;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let flags_in: i32 = jxlload_options.flags as i32;
+        let flags_in_name = utils::new_c_string("flags")?;
+
+        let memory_in: i32 = if jxlload_options.memory { 1 } else { 0 };
+        let memory_in_name = utils::new_c_string("memory")?;
+
+        let access_in: i32 = jxlload_options.access as i32;
+        let access_in_name = utils::new_c_string("access")?;
+
+        let fail_on_in: i32 = jxlload_options.fail_on as i32;
+        let fail_on_in_name = utils::new_c_string("fail-on")?;
+
+        let revalidate_in: i32 = if jxlload_options.revalidate { 1 } else { 0 };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
+        let vips_op_response = bindings::vips_jxlload(
+            filename_in.as_ptr(),
+            &mut out_out,
+            flags_in_name.as_ptr(),
+            flags_in,
+            memory_in_name.as_ptr(),
+            memory_in,
+            access_in_name.as_ptr(),
+            access_in,
+            fail_on_in_name.as_ptr(),
+            fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
+            NULL,
+        );
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::JxlloadError,
+        )
+    }
+}
+
+/// VipsForeignLoadJxlBuffer (jxlload_buffer), load JPEG-XL image, priority=0, untrusted, is_a_buffer, get_flags, header, load
+/// buffer: `&[u8]` -> Buffer to load from
+/// returns `VipsImage` - Output image
+pub fn jxlload_buffer(buffer: &[u8]) -> Result<VipsImage> {
+    unsafe {
+        let buffer_in: *mut c_void = buffer.as_ptr() as *mut c_void;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let vips_op_response =
+            bindings::vips_jxlload_buffer(buffer_in, buffer.len() as u64, &mut out_out, NULL);
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::JxlloadBufferError,
+        )
+    }
+}
+
+/// Options for jxlload_buffer operation
+#[derive(Clone, Debug)]
+pub struct JxlloadBufferOptions {
+    /// flags: `ForeignFlags` -> Flags for this file
+    ///  `None` -> VIPS_FOREIGN_NONE = 0 [DEFAULT]
+    ///  `Partial` -> VIPS_FOREIGN_PARTIAL = 1
+    ///  `Bigendian` -> VIPS_FOREIGN_BIGENDIAN = 2
+    ///  `Sequential` -> VIPS_FOREIGN_SEQUENTIAL = 4
+    ///  `All` -> VIPS_FOREIGN_ALL = 7
+    pub flags: ForeignFlags,
+    /// memory: `bool` -> Force open via memory
+    /// default: false
+    pub memory: bool,
+    /// access: `Access` -> Required access pattern for this file
+    ///  `Random` -> VIPS_ACCESS_RANDOM = 0 [DEFAULT]
+    ///  `Sequential` -> VIPS_ACCESS_SEQUENTIAL = 1
+    ///  `SequentialUnbuffered` -> VIPS_ACCESS_SEQUENTIAL_UNBUFFERED = 2
+    ///  `Last` -> VIPS_ACCESS_LAST = 3
+    pub access: Access,
+    /// fail_on: `FailOn` -> Error level to fail on
+    ///  `None` -> VIPS_FAIL_ON_NONE = 0 [DEFAULT]
+    ///  `Truncated` -> VIPS_FAIL_ON_TRUNCATED = 1
+    ///  `Error` -> VIPS_FAIL_ON_ERROR = 2
+    ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
+    ///  `Last` -> VIPS_FAIL_ON_LAST = 4
+    pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
+}
+
+impl std::default::Default for JxlloadBufferOptions {
+    fn default() -> Self {
+        JxlloadBufferOptions {
+            flags: ForeignFlags::None,
+            memory: false,
+            access: Access::Random,
+            fail_on: FailOn::None,
+            revalidate: false,
+        }
+    }
+}
+
+/// VipsForeignLoadJxlBuffer (jxlload_buffer), load JPEG-XL image, priority=0, untrusted, is_a_buffer, get_flags, header, load
+/// buffer: `&[u8]` -> Buffer to load from
+/// jxlload_buffer_options: `&JxlloadBufferOptions` -> optional arguments
+/// returns `VipsImage` - Output image
+pub fn jxlload_buffer_with_opts(
+    buffer: &[u8],
+    jxlload_buffer_options: &JxlloadBufferOptions,
+) -> Result<VipsImage> {
+    unsafe {
+        let buffer_in: *mut c_void = buffer.as_ptr() as *mut c_void;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let flags_in: i32 = jxlload_buffer_options.flags as i32;
+        let flags_in_name = utils::new_c_string("flags")?;
+
+        let memory_in: i32 = if jxlload_buffer_options.memory { 1 } else { 0 };
+        let memory_in_name = utils::new_c_string("memory")?;
+
+        let access_in: i32 = jxlload_buffer_options.access as i32;
+        let access_in_name = utils::new_c_string("access")?;
+
+        let fail_on_in: i32 = jxlload_buffer_options.fail_on as i32;
+        let fail_on_in_name = utils::new_c_string("fail-on")?;
+
+        let revalidate_in: i32 = if jxlload_buffer_options.revalidate {
+            1
+        } else {
+            0
+        };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
+        let vips_op_response = bindings::vips_jxlload_buffer(
+            buffer_in,
+            buffer.len() as u64,
+            &mut out_out,
+            flags_in_name.as_ptr(),
+            flags_in,
+            memory_in_name.as_ptr(),
+            memory_in,
+            access_in_name.as_ptr(),
+            access_in,
+            fail_on_in_name.as_ptr(),
+            fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
+            NULL,
+        );
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::JxlloadBufferError,
+        )
+    }
+}
+
+/// VipsForeignLoadJxlSource (jxlload_source), load JPEG-XL image, priority=0, untrusted, is_a_source, get_flags, header, load
+/// source: `&VipsSource` -> Source to load from
+/// returns `VipsImage` - Output image
+pub fn jxlload_source(source: &VipsSource) -> Result<VipsImage> {
+    unsafe {
+        let source_in: *mut bindings::VipsSource = source.ctx;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let vips_op_response = bindings::vips_jxlload_source(source_in, &mut out_out, NULL);
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::JxlloadSourceError,
+        )
+    }
+}
+
+/// Options for jxlload_source operation
+#[derive(Clone, Debug)]
+pub struct JxlloadSourceOptions {
+    /// flags: `ForeignFlags` -> Flags for this file
+    ///  `None` -> VIPS_FOREIGN_NONE = 0 [DEFAULT]
+    ///  `Partial` -> VIPS_FOREIGN_PARTIAL = 1
+    ///  `Bigendian` -> VIPS_FOREIGN_BIGENDIAN = 2
+    ///  `Sequential` -> VIPS_FOREIGN_SEQUENTIAL = 4
+    ///  `All` -> VIPS_FOREIGN_ALL = 7
+    pub flags: ForeignFlags,
+    /// memory: `bool` -> Force open via memory
+    /// default: false
+    pub memory: bool,
+    /// access: `Access` -> Required access pattern for this file
+    ///  `Random` -> VIPS_ACCESS_RANDOM = 0 [DEFAULT]
+    ///  `Sequential` -> VIPS_ACCESS_SEQUENTIAL = 1
+    ///  `SequentialUnbuffered` -> VIPS_ACCESS_SEQUENTIAL_UNBUFFERED = 2
+    ///  `Last` -> VIPS_ACCESS_LAST = 3
+    pub access: Access,
+    /// fail_on: `FailOn` -> Error level to fail on
+    ///  `None` -> VIPS_FAIL_ON_NONE = 0 [DEFAULT]
+    ///  `Truncated` -> VIPS_FAIL_ON_TRUNCATED = 1
+    ///  `Error` -> VIPS_FAIL_ON_ERROR = 2
+    ///  `Warning` -> VIPS_FAIL_ON_WARNING = 3
+    ///  `Last` -> VIPS_FAIL_ON_LAST = 4
+    pub fail_on: FailOn,
+    /// revalidate: `bool` -> Don't use a cached result for this operation
+    /// default: false
+    pub revalidate: bool,
+}
+
+impl std::default::Default for JxlloadSourceOptions {
+    fn default() -> Self {
+        JxlloadSourceOptions {
+            flags: ForeignFlags::None,
+            memory: false,
+            access: Access::Random,
+            fail_on: FailOn::None,
+            revalidate: false,
+        }
+    }
+}
+
+/// VipsForeignLoadJxlSource (jxlload_source), load JPEG-XL image, priority=0, untrusted, is_a_source, get_flags, header, load
+/// source: `&VipsSource` -> Source to load from
+/// jxlload_source_options: `&JxlloadSourceOptions` -> optional arguments
+/// returns `VipsImage` - Output image
+pub fn jxlload_source_with_opts(
+    source: &VipsSource,
+    jxlload_source_options: &JxlloadSourceOptions,
+) -> Result<VipsImage> {
+    unsafe {
+        let source_in: *mut bindings::VipsSource = source.ctx;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let flags_in: i32 = jxlload_source_options.flags as i32;
+        let flags_in_name = utils::new_c_string("flags")?;
+
+        let memory_in: i32 = if jxlload_source_options.memory { 1 } else { 0 };
+        let memory_in_name = utils::new_c_string("memory")?;
+
+        let access_in: i32 = jxlload_source_options.access as i32;
+        let access_in_name = utils::new_c_string("access")?;
+
+        let fail_on_in: i32 = jxlload_source_options.fail_on as i32;
+        let fail_on_in_name = utils::new_c_string("fail-on")?;
+
+        let revalidate_in: i32 = if jxlload_source_options.revalidate {
+            1
+        } else {
+            0
+        };
+        let revalidate_in_name = utils::new_c_string("revalidate")?;
+
+        let vips_op_response = bindings::vips_jxlload_source(
+            source_in,
+            &mut out_out,
+            flags_in_name.as_ptr(),
+            flags_in,
+            memory_in_name.as_ptr(),
+            memory_in,
+            access_in_name.as_ptr(),
+            access_in,
+            fail_on_in_name.as_ptr(),
+            fail_on_in,
+            revalidate_in_name.as_ptr(),
+            revalidate_in,
+            NULL,
+        );
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::JxlloadSourceError,
         )
     }
 }
@@ -11942,23 +14853,32 @@ pub fn csvsave(inp: &VipsImage, filename: &str) -> Result<()> {
 pub struct CsvsaveOptions {
     /// separator: `String` -> Separator characters
     pub separator: String,
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for CsvsaveOptions {
     fn default() -> Self {
         CsvsaveOptions {
             separator: String::new(),
-            strip: false,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
@@ -11980,8 +14900,8 @@ pub fn csvsave_with_opts(
         let separator_in: CString = utils::new_c_string(&csvsave_options.separator)?;
         let separator_in_name = utils::new_c_string("separator")?;
 
-        let strip_in: i32 = if csvsave_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let keep_in: i32 = csvsave_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&csvsave_options.background[..]);
@@ -11991,17 +14911,22 @@ pub fn csvsave_with_opts(
         let page_height_in: i32 = csvsave_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
 
+        let profile_in: CString = utils::new_c_string(&csvsave_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
         let vips_op_response = bindings::vips_csvsave(
             inp_in,
             filename_in.as_ptr(),
             separator_in_name.as_ptr(),
             separator_in.as_ptr(),
-            strip_in_name.as_ptr(),
-            strip_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(vips_op_response, (), Error::CsvsaveError)
@@ -12027,23 +14952,32 @@ pub fn csvsave_target(inp: &VipsImage, target: &VipsTarget) -> Result<()> {
 pub struct CsvsaveTargetOptions {
     /// separator: `String` -> Separator characters
     pub separator: String,
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for CsvsaveTargetOptions {
     fn default() -> Self {
         CsvsaveTargetOptions {
             separator: String::new(),
-            strip: false,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
@@ -12065,8 +14999,8 @@ pub fn csvsave_target_with_opts(
         let separator_in: CString = utils::new_c_string(&csvsave_target_options.separator)?;
         let separator_in_name = utils::new_c_string("separator")?;
 
-        let strip_in: i32 = if csvsave_target_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let keep_in: i32 = csvsave_target_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&csvsave_target_options.background[..]);
@@ -12076,17 +15010,22 @@ pub fn csvsave_target_with_opts(
         let page_height_in: i32 = csvsave_target_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
 
+        let profile_in: CString = utils::new_c_string(&csvsave_target_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
         let vips_op_response = bindings::vips_csvsave_target(
             inp_in,
             target_in,
             separator_in_name.as_ptr(),
             separator_in.as_ptr(),
-            strip_in_name.as_ptr(),
-            strip_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(vips_op_response, (), Error::CsvsaveTargetError)
@@ -12110,22 +15049,31 @@ pub fn matrixsave(inp: &VipsImage, filename: &str) -> Result<()> {
 /// Options for matrixsave operation
 #[derive(Clone, Debug)]
 pub struct MatrixsaveOptions {
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for MatrixsaveOptions {
     fn default() -> Self {
         MatrixsaveOptions {
-            strip: false,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
@@ -12144,8 +15092,8 @@ pub fn matrixsave_with_opts(
         let inp_in: *mut bindings::VipsImage = inp.ctx;
         let filename_in: CString = utils::new_c_string(filename)?;
 
-        let strip_in: i32 = if matrixsave_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let keep_in: i32 = matrixsave_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&matrixsave_options.background[..]);
@@ -12155,15 +15103,20 @@ pub fn matrixsave_with_opts(
         let page_height_in: i32 = matrixsave_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
 
+        let profile_in: CString = utils::new_c_string(&matrixsave_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
         let vips_op_response = bindings::vips_matrixsave(
             inp_in,
             filename_in.as_ptr(),
-            strip_in_name.as_ptr(),
-            strip_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(vips_op_response, (), Error::MatrixsaveError)
@@ -12187,22 +15140,31 @@ pub fn matrixsave_target(inp: &VipsImage, target: &VipsTarget) -> Result<()> {
 /// Options for matrixsave_target operation
 #[derive(Clone, Debug)]
 pub struct MatrixsaveTargetOptions {
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for MatrixsaveTargetOptions {
     fn default() -> Self {
         MatrixsaveTargetOptions {
-            strip: false,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
@@ -12221,12 +15183,8 @@ pub fn matrixsave_target_with_opts(
         let inp_in: *mut bindings::VipsImage = inp.ctx;
         let target_in: *mut bindings::VipsTarget = target.ctx;
 
-        let strip_in: i32 = if matrixsave_target_options.strip {
-            1
-        } else {
-            0
-        };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let keep_in: i32 = matrixsave_target_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&matrixsave_target_options.background[..]);
@@ -12236,15 +15194,20 @@ pub fn matrixsave_target_with_opts(
         let page_height_in: i32 = matrixsave_target_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
 
+        let profile_in: CString = utils::new_c_string(&matrixsave_target_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
         let vips_op_response = bindings::vips_matrixsave_target(
             inp_in,
             target_in,
-            strip_in_name.as_ptr(),
-            strip_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(vips_op_response, (), Error::MatrixsaveTargetError)
@@ -12266,22 +15229,31 @@ pub fn matrixprint(inp: &VipsImage) -> Result<()> {
 /// Options for matrixprint operation
 #[derive(Clone, Debug)]
 pub struct MatrixprintOptions {
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for MatrixprintOptions {
     fn default() -> Self {
         MatrixprintOptions {
-            strip: false,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
@@ -12297,8 +15269,8 @@ pub fn matrixprint_with_opts(
     unsafe {
         let inp_in: *mut bindings::VipsImage = inp.ctx;
 
-        let strip_in: i32 = if matrixprint_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let keep_in: i32 = matrixprint_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&matrixprint_options.background[..]);
@@ -12308,14 +15280,19 @@ pub fn matrixprint_with_opts(
         let page_height_in: i32 = matrixprint_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
 
+        let profile_in: CString = utils::new_c_string(&matrixprint_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
         let vips_op_response = bindings::vips_matrixprint(
             inp_in,
-            strip_in_name.as_ptr(),
-            strip_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(vips_op_response, (), Error::MatrixprintError)
@@ -12339,22 +15316,31 @@ pub fn rawsave(inp: &VipsImage, filename: &str) -> Result<()> {
 /// Options for rawsave operation
 #[derive(Clone, Debug)]
 pub struct RawsaveOptions {
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for RawsaveOptions {
     fn default() -> Self {
         RawsaveOptions {
-            strip: false,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
@@ -12373,8 +15359,8 @@ pub fn rawsave_with_opts(
         let inp_in: *mut bindings::VipsImage = inp.ctx;
         let filename_in: CString = utils::new_c_string(filename)?;
 
-        let strip_in: i32 = if rawsave_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let keep_in: i32 = rawsave_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&rawsave_options.background[..]);
@@ -12384,15 +15370,20 @@ pub fn rawsave_with_opts(
         let page_height_in: i32 = rawsave_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
 
+        let profile_in: CString = utils::new_c_string(&rawsave_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
         let vips_op_response = bindings::vips_rawsave(
             inp_in,
             filename_in.as_ptr(),
-            strip_in_name.as_ptr(),
-            strip_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(vips_op_response, (), Error::RawsaveError)
@@ -12417,22 +15408,31 @@ pub fn rawsave_fd(inp: &VipsImage, fd: i32) -> Result<()> {
 /// Options for rawsave_fd operation
 #[derive(Clone, Debug)]
 pub struct RawsaveFdOptions {
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for RawsaveFdOptions {
     fn default() -> Self {
         RawsaveFdOptions {
-            strip: false,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
@@ -12452,8 +15452,8 @@ pub fn rawsave_fd_with_opts(
         let inp_in: *mut bindings::VipsImage = inp.ctx;
         let fd_in: i32 = fd;
 
-        let strip_in: i32 = if rawsave_fd_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let keep_in: i32 = rawsave_fd_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&rawsave_fd_options.background[..]);
@@ -12463,15 +15463,20 @@ pub fn rawsave_fd_with_opts(
         let page_height_in: i32 = rawsave_fd_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
 
+        let profile_in: CString = utils::new_c_string(&rawsave_fd_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
         let vips_op_response = bindings::vips_rawsave_fd(
             inp_in,
             fd_in,
-            strip_in_name.as_ptr(),
-            strip_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(vips_op_response, (), Error::RawsaveFdError)
@@ -12495,22 +15500,31 @@ pub fn vipssave(inp: &VipsImage, filename: &str) -> Result<()> {
 /// Options for vipssave operation
 #[derive(Clone, Debug)]
 pub struct VipssaveOptions {
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for VipssaveOptions {
     fn default() -> Self {
         VipssaveOptions {
-            strip: false,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
@@ -12529,8 +15543,8 @@ pub fn vipssave_with_opts(
         let inp_in: *mut bindings::VipsImage = inp.ctx;
         let filename_in: CString = utils::new_c_string(filename)?;
 
-        let strip_in: i32 = if vipssave_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let keep_in: i32 = vipssave_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&vipssave_options.background[..]);
@@ -12540,15 +15554,20 @@ pub fn vipssave_with_opts(
         let page_height_in: i32 = vipssave_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
 
+        let profile_in: CString = utils::new_c_string(&vipssave_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
         let vips_op_response = bindings::vips_vipssave(
             inp_in,
             filename_in.as_ptr(),
-            strip_in_name.as_ptr(),
-            strip_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(vips_op_response, (), Error::VipssaveError)
@@ -12572,22 +15591,31 @@ pub fn vipssave_target(inp: &VipsImage, target: &VipsTarget) -> Result<()> {
 /// Options for vipssave_target operation
 #[derive(Clone, Debug)]
 pub struct VipssaveTargetOptions {
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for VipssaveTargetOptions {
     fn default() -> Self {
         VipssaveTargetOptions {
-            strip: false,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
@@ -12606,8 +15634,8 @@ pub fn vipssave_target_with_opts(
         let inp_in: *mut bindings::VipsImage = inp.ctx;
         let target_in: *mut bindings::VipsTarget = target.ctx;
 
-        let strip_in: i32 = if vipssave_target_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let keep_in: i32 = vipssave_target_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&vipssave_target_options.background[..]);
@@ -12617,22 +15645,27 @@ pub fn vipssave_target_with_opts(
         let page_height_in: i32 = vipssave_target_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
 
+        let profile_in: CString = utils::new_c_string(&vipssave_target_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
         let vips_op_response = bindings::vips_vipssave_target(
             inp_in,
             target_in,
-            strip_in_name.as_ptr(),
-            strip_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(vips_op_response, (), Error::VipssaveTargetError)
     }
 }
 
-/// VipsForeignSavePpmFile (ppmsave), save image to ppm file (.pbm, .pgm, .ppm, .pfm), priority=0, rgb
+/// VipsForeignSavePpmFile (ppmsave), save image to ppm file (.pbm, .pgm, .ppm, .pfm, .pnm), priority=0, rgb
 /// inp: `&VipsImage` -> Image to save
 /// filename: `&str` -> Filename to save to
 
@@ -12654,7 +15687,8 @@ pub struct PpmsaveOptions {
     ///  `Pgm` -> VIPS_FOREIGN_PPM_FORMAT_PGM = 1
     ///  `Ppm` -> VIPS_FOREIGN_PPM_FORMAT_PPM = 2 [DEFAULT]
     ///  `Pfm` -> VIPS_FOREIGN_PPM_FORMAT_PFM = 3
-    ///  `Last` -> VIPS_FOREIGN_PPM_FORMAT_LAST = 4
+    ///  `Pnm` -> VIPS_FOREIGN_PPM_FORMAT_PNM = 4
+    ///  `Last` -> VIPS_FOREIGN_PPM_FORMAT_LAST = 5
     pub format: ForeignPpmFormat,
     /// ascii: `bool` -> Save as ascii
     /// default: false
@@ -12662,14 +15696,22 @@ pub struct PpmsaveOptions {
     /// bitdepth: `i32` -> Set to 1 to write as a 1 bit image
     /// min: 0, max: 1, default: 0
     pub bitdepth: i32,
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for PpmsaveOptions {
@@ -12678,14 +15720,15 @@ impl std::default::Default for PpmsaveOptions {
             format: ForeignPpmFormat::Ppm,
             ascii: false,
             bitdepth: i32::from(0),
-            strip: false,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
 
-/// VipsForeignSavePpmFile (ppmsave), save image to ppm file (.pbm, .pgm, .ppm, .pfm), priority=0, rgb
+/// VipsForeignSavePpmFile (ppmsave), save image to ppm file (.pbm, .pgm, .ppm, .pfm, .pnm), priority=0, rgb
 /// inp: `&VipsImage` -> Image to save
 /// filename: `&str` -> Filename to save to
 /// ppmsave_options: `&PpmsaveOptions` -> optional arguments
@@ -12708,8 +15751,8 @@ pub fn ppmsave_with_opts(
         let bitdepth_in: i32 = ppmsave_options.bitdepth;
         let bitdepth_in_name = utils::new_c_string("bitdepth")?;
 
-        let strip_in: i32 = if ppmsave_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let keep_in: i32 = ppmsave_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&ppmsave_options.background[..]);
@@ -12718,6 +15761,9 @@ pub fn ppmsave_with_opts(
 
         let page_height_in: i32 = ppmsave_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
+
+        let profile_in: CString = utils::new_c_string(&ppmsave_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
 
         let vips_op_response = bindings::vips_ppmsave(
             inp_in,
@@ -12728,12 +15774,14 @@ pub fn ppmsave_with_opts(
             ascii_in,
             bitdepth_in_name.as_ptr(),
             bitdepth_in,
-            strip_in_name.as_ptr(),
-            strip_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(vips_op_response, (), Error::PpmsaveError)
@@ -12762,7 +15810,8 @@ pub struct PpmsaveTargetOptions {
     ///  `Pgm` -> VIPS_FOREIGN_PPM_FORMAT_PGM = 1
     ///  `Ppm` -> VIPS_FOREIGN_PPM_FORMAT_PPM = 2 [DEFAULT]
     ///  `Pfm` -> VIPS_FOREIGN_PPM_FORMAT_PFM = 3
-    ///  `Last` -> VIPS_FOREIGN_PPM_FORMAT_LAST = 4
+    ///  `Pnm` -> VIPS_FOREIGN_PPM_FORMAT_PNM = 4
+    ///  `Last` -> VIPS_FOREIGN_PPM_FORMAT_LAST = 5
     pub format: ForeignPpmFormat,
     /// ascii: `bool` -> Save as ascii
     /// default: false
@@ -12770,14 +15819,22 @@ pub struct PpmsaveTargetOptions {
     /// bitdepth: `i32` -> Set to 1 to write as a 1 bit image
     /// min: 0, max: 1, default: 0
     pub bitdepth: i32,
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for PpmsaveTargetOptions {
@@ -12786,9 +15843,10 @@ impl std::default::Default for PpmsaveTargetOptions {
             format: ForeignPpmFormat::Ppm,
             ascii: false,
             bitdepth: i32::from(0),
-            strip: false,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
@@ -12816,8 +15874,8 @@ pub fn ppmsave_target_with_opts(
         let bitdepth_in: i32 = ppmsave_target_options.bitdepth;
         let bitdepth_in_name = utils::new_c_string("bitdepth")?;
 
-        let strip_in: i32 = if ppmsave_target_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let keep_in: i32 = ppmsave_target_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&ppmsave_target_options.background[..]);
@@ -12826,6 +15884,9 @@ pub fn ppmsave_target_with_opts(
 
         let page_height_in: i32 = ppmsave_target_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
+
+        let profile_in: CString = utils::new_c_string(&ppmsave_target_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
 
         let vips_op_response = bindings::vips_ppmsave_target(
             inp_in,
@@ -12836,12 +15897,14 @@ pub fn ppmsave_target_with_opts(
             ascii_in,
             bitdepth_in_name.as_ptr(),
             bitdepth_in,
-            strip_in_name.as_ptr(),
-            strip_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(vips_op_response, (), Error::PpmsaveTargetError)
@@ -12865,22 +15928,31 @@ pub fn radsave(inp: &VipsImage, filename: &str) -> Result<()> {
 /// Options for radsave operation
 #[derive(Clone, Debug)]
 pub struct RadsaveOptions {
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for RadsaveOptions {
     fn default() -> Self {
         RadsaveOptions {
-            strip: false,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
@@ -12899,8 +15971,8 @@ pub fn radsave_with_opts(
         let inp_in: *mut bindings::VipsImage = inp.ctx;
         let filename_in: CString = utils::new_c_string(filename)?;
 
-        let strip_in: i32 = if radsave_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let keep_in: i32 = radsave_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&radsave_options.background[..]);
@@ -12910,15 +15982,20 @@ pub fn radsave_with_opts(
         let page_height_in: i32 = radsave_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
 
+        let profile_in: CString = utils::new_c_string(&radsave_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
         let vips_op_response = bindings::vips_radsave(
             inp_in,
             filename_in.as_ptr(),
-            strip_in_name.as_ptr(),
-            strip_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(vips_op_response, (), Error::RadsaveError)
@@ -12947,22 +16024,31 @@ pub fn radsave_buffer(inp: &VipsImage) -> Result<Vec<u8>> {
 /// Options for radsave_buffer operation
 #[derive(Clone, Debug)]
 pub struct RadsaveBufferOptions {
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for RadsaveBufferOptions {
     fn default() -> Self {
         RadsaveBufferOptions {
-            strip: false,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
@@ -12980,8 +16066,8 @@ pub fn radsave_buffer_with_opts(
         let mut buffer_buf_size: u64 = 0;
         let mut buffer_out: *mut c_void = null_mut();
 
-        let strip_in: i32 = if radsave_buffer_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let keep_in: i32 = radsave_buffer_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&radsave_buffer_options.background[..]);
@@ -12991,16 +16077,21 @@ pub fn radsave_buffer_with_opts(
         let page_height_in: i32 = radsave_buffer_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
 
+        let profile_in: CString = utils::new_c_string(&radsave_buffer_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
         let vips_op_response = bindings::vips_radsave_buffer(
             inp_in,
             &mut buffer_out,
             &mut buffer_buf_size,
-            strip_in_name.as_ptr(),
-            strip_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(
@@ -13028,22 +16119,31 @@ pub fn radsave_target(inp: &VipsImage, target: &VipsTarget) -> Result<()> {
 /// Options for radsave_target operation
 #[derive(Clone, Debug)]
 pub struct RadsaveTargetOptions {
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for RadsaveTargetOptions {
     fn default() -> Self {
         RadsaveTargetOptions {
-            strip: false,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
@@ -13062,8 +16162,8 @@ pub fn radsave_target_with_opts(
         let inp_in: *mut bindings::VipsImage = inp.ctx;
         let target_in: *mut bindings::VipsTarget = target.ctx;
 
-        let strip_in: i32 = if radsave_target_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let keep_in: i32 = radsave_target_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&radsave_target_options.background[..]);
@@ -13073,18 +16173,457 @@ pub fn radsave_target_with_opts(
         let page_height_in: i32 = radsave_target_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
 
+        let profile_in: CString = utils::new_c_string(&radsave_target_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
         let vips_op_response = bindings::vips_radsave_target(
             inp_in,
             target_in,
-            strip_in_name.as_ptr(),
-            strip_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(vips_op_response, (), Error::RadsaveTargetError)
+    }
+}
+
+/// VipsForeignSaveJp2kFile (jp2ksave), save image in JPEG2000 format (.j2k, .jp2, .jpt, .j2c, .jpc), priority=0, any
+/// inp: `&VipsImage` -> Image to save
+/// filename: `&str` -> Filename to load from
+
+pub fn jp_2ksave(inp: &VipsImage, filename: &str) -> Result<()> {
+    unsafe {
+        let inp_in: *mut bindings::VipsImage = inp.ctx;
+        let filename_in: CString = utils::new_c_string(filename)?;
+
+        let vips_op_response = bindings::vips_jp2ksave(inp_in, filename_in.as_ptr(), NULL);
+        utils::result(vips_op_response, (), Error::Jp2KsaveError)
+    }
+}
+
+/// Options for jp_2ksave operation
+#[derive(Clone, Debug)]
+pub struct Jp2KsaveOptions {
+    /// tile_width: `i32` -> Tile width in pixels
+    /// min: 1, max: 32768, default: 512
+    pub tile_width: i32,
+    /// tile_height: `i32` -> Tile height in pixels
+    /// min: 1, max: 32768, default: 512
+    pub tile_height: i32,
+    /// lossless: `bool` -> Enable lossless compression
+    /// default: false
+    pub lossless: bool,
+    /// q: `i32` -> Q factor
+    /// min: 1, max: 100, default: 48
+    pub q: i32,
+    /// subsample_mode: `ForeignSubsample` -> Select chroma subsample operation mode
+    ///  `Auto` -> VIPS_FOREIGN_SUBSAMPLE_AUTO = 0
+    ///  `On` -> VIPS_FOREIGN_SUBSAMPLE_ON = 1
+    ///  `Off` -> VIPS_FOREIGN_SUBSAMPLE_OFF = 2 [DEFAULT]
+    ///  `Last` -> VIPS_FOREIGN_SUBSAMPLE_LAST = 3
+    pub subsample_mode: ForeignSubsample,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
+    /// background: `Vec<f64>` -> Background value
+    pub background: Vec<f64>,
+    /// page_height: `i32` -> Set page height for multipage save
+    /// min: 0, max: 10000000, default: 0
+    pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
+}
+
+impl std::default::Default for Jp2KsaveOptions {
+    fn default() -> Self {
+        Jp2KsaveOptions {
+            tile_width: i32::from(512),
+            tile_height: i32::from(512),
+            lossless: false,
+            q: i32::from(48),
+            subsample_mode: ForeignSubsample::Off,
+            keep: ForeignKeep::All,
+            background: Vec::new(),
+            page_height: i32::from(0),
+            profile: String::from("sRGB"),
+        }
+    }
+}
+
+/// VipsForeignSaveJp2kFile (jp2ksave), save image in JPEG2000 format (.j2k, .jp2, .jpt, .j2c, .jpc), priority=0, any
+/// inp: `&VipsImage` -> Image to save
+/// filename: `&str` -> Filename to load from
+/// jp_2ksave_options: `&Jp2KsaveOptions` -> optional arguments
+
+pub fn jp_2ksave_with_opts(
+    inp: &VipsImage,
+    filename: &str,
+    jp_2ksave_options: &Jp2KsaveOptions,
+) -> Result<()> {
+    unsafe {
+        let inp_in: *mut bindings::VipsImage = inp.ctx;
+        let filename_in: CString = utils::new_c_string(filename)?;
+
+        let tile_width_in: i32 = jp_2ksave_options.tile_width;
+        let tile_width_in_name = utils::new_c_string("tile-width")?;
+
+        let tile_height_in: i32 = jp_2ksave_options.tile_height;
+        let tile_height_in_name = utils::new_c_string("tile-height")?;
+
+        let lossless_in: i32 = if jp_2ksave_options.lossless { 1 } else { 0 };
+        let lossless_in_name = utils::new_c_string("lossless")?;
+
+        let q_in: i32 = jp_2ksave_options.q;
+        let q_in_name = utils::new_c_string("Q")?;
+
+        let subsample_mode_in: i32 = jp_2ksave_options.subsample_mode as i32;
+        let subsample_mode_in_name = utils::new_c_string("subsample-mode")?;
+
+        let keep_in: i32 = jp_2ksave_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
+
+        let background_wrapper =
+            utils::VipsArrayDoubleWrapper::from(&jp_2ksave_options.background[..]);
+        let background_in = background_wrapper.ctx;
+        let background_in_name = utils::new_c_string("background")?;
+
+        let page_height_in: i32 = jp_2ksave_options.page_height;
+        let page_height_in_name = utils::new_c_string("page-height")?;
+
+        let profile_in: CString = utils::new_c_string(&jp_2ksave_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
+        let vips_op_response = bindings::vips_jp2ksave(
+            inp_in,
+            filename_in.as_ptr(),
+            tile_width_in_name.as_ptr(),
+            tile_width_in,
+            tile_height_in_name.as_ptr(),
+            tile_height_in,
+            lossless_in_name.as_ptr(),
+            lossless_in,
+            q_in_name.as_ptr(),
+            q_in,
+            subsample_mode_in_name.as_ptr(),
+            subsample_mode_in,
+            keep_in_name.as_ptr(),
+            keep_in,
+            background_in_name.as_ptr(),
+            background_in,
+            page_height_in_name.as_ptr(),
+            page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
+            NULL,
+        );
+        utils::result(vips_op_response, (), Error::Jp2KsaveError)
+    }
+}
+
+/// VipsForeignSaveJp2kBuffer (jp2ksave_buffer), save image in JPEG2000 format (.j2k, .jp2, .jpt, .j2c, .jpc), priority=0, any
+/// inp: `&VipsImage` -> Image to save
+/// returns `Vec<u8>` - Buffer to save to
+pub fn jp_2ksave_buffer(inp: &VipsImage) -> Result<Vec<u8>> {
+    unsafe {
+        let inp_in: *mut bindings::VipsImage = inp.ctx;
+        let mut buffer_buf_size: u64 = 0;
+        let mut buffer_out: *mut c_void = null_mut();
+
+        let vips_op_response =
+            bindings::vips_jp2ksave_buffer(inp_in, &mut buffer_out, &mut buffer_buf_size, NULL);
+        utils::result(
+            vips_op_response,
+            utils::new_byte_array(buffer_out, buffer_buf_size),
+            Error::Jp2KsaveBufferError,
+        )
+    }
+}
+
+/// Options for jp_2ksave_buffer operation
+#[derive(Clone, Debug)]
+pub struct Jp2KsaveBufferOptions {
+    /// tile_width: `i32` -> Tile width in pixels
+    /// min: 1, max: 32768, default: 512
+    pub tile_width: i32,
+    /// tile_height: `i32` -> Tile height in pixels
+    /// min: 1, max: 32768, default: 512
+    pub tile_height: i32,
+    /// lossless: `bool` -> Enable lossless compression
+    /// default: false
+    pub lossless: bool,
+    /// q: `i32` -> Q factor
+    /// min: 1, max: 100, default: 48
+    pub q: i32,
+    /// subsample_mode: `ForeignSubsample` -> Select chroma subsample operation mode
+    ///  `Auto` -> VIPS_FOREIGN_SUBSAMPLE_AUTO = 0
+    ///  `On` -> VIPS_FOREIGN_SUBSAMPLE_ON = 1
+    ///  `Off` -> VIPS_FOREIGN_SUBSAMPLE_OFF = 2 [DEFAULT]
+    ///  `Last` -> VIPS_FOREIGN_SUBSAMPLE_LAST = 3
+    pub subsample_mode: ForeignSubsample,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
+    /// background: `Vec<f64>` -> Background value
+    pub background: Vec<f64>,
+    /// page_height: `i32` -> Set page height for multipage save
+    /// min: 0, max: 10000000, default: 0
+    pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
+}
+
+impl std::default::Default for Jp2KsaveBufferOptions {
+    fn default() -> Self {
+        Jp2KsaveBufferOptions {
+            tile_width: i32::from(512),
+            tile_height: i32::from(512),
+            lossless: false,
+            q: i32::from(48),
+            subsample_mode: ForeignSubsample::Off,
+            keep: ForeignKeep::All,
+            background: Vec::new(),
+            page_height: i32::from(0),
+            profile: String::from("sRGB"),
+        }
+    }
+}
+
+/// VipsForeignSaveJp2kBuffer (jp2ksave_buffer), save image in JPEG2000 format (.j2k, .jp2, .jpt, .j2c, .jpc), priority=0, any
+/// inp: `&VipsImage` -> Image to save
+/// jp_2ksave_buffer_options: `&Jp2KsaveBufferOptions` -> optional arguments
+/// returns `Vec<u8>` - Buffer to save to
+pub fn jp_2ksave_buffer_with_opts(
+    inp: &VipsImage,
+    jp_2ksave_buffer_options: &Jp2KsaveBufferOptions,
+) -> Result<Vec<u8>> {
+    unsafe {
+        let inp_in: *mut bindings::VipsImage = inp.ctx;
+        let mut buffer_buf_size: u64 = 0;
+        let mut buffer_out: *mut c_void = null_mut();
+
+        let tile_width_in: i32 = jp_2ksave_buffer_options.tile_width;
+        let tile_width_in_name = utils::new_c_string("tile-width")?;
+
+        let tile_height_in: i32 = jp_2ksave_buffer_options.tile_height;
+        let tile_height_in_name = utils::new_c_string("tile-height")?;
+
+        let lossless_in: i32 = if jp_2ksave_buffer_options.lossless {
+            1
+        } else {
+            0
+        };
+        let lossless_in_name = utils::new_c_string("lossless")?;
+
+        let q_in: i32 = jp_2ksave_buffer_options.q;
+        let q_in_name = utils::new_c_string("Q")?;
+
+        let subsample_mode_in: i32 = jp_2ksave_buffer_options.subsample_mode as i32;
+        let subsample_mode_in_name = utils::new_c_string("subsample-mode")?;
+
+        let keep_in: i32 = jp_2ksave_buffer_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
+
+        let background_wrapper =
+            utils::VipsArrayDoubleWrapper::from(&jp_2ksave_buffer_options.background[..]);
+        let background_in = background_wrapper.ctx;
+        let background_in_name = utils::new_c_string("background")?;
+
+        let page_height_in: i32 = jp_2ksave_buffer_options.page_height;
+        let page_height_in_name = utils::new_c_string("page-height")?;
+
+        let profile_in: CString = utils::new_c_string(&jp_2ksave_buffer_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
+        let vips_op_response = bindings::vips_jp2ksave_buffer(
+            inp_in,
+            &mut buffer_out,
+            &mut buffer_buf_size,
+            tile_width_in_name.as_ptr(),
+            tile_width_in,
+            tile_height_in_name.as_ptr(),
+            tile_height_in,
+            lossless_in_name.as_ptr(),
+            lossless_in,
+            q_in_name.as_ptr(),
+            q_in,
+            subsample_mode_in_name.as_ptr(),
+            subsample_mode_in,
+            keep_in_name.as_ptr(),
+            keep_in,
+            background_in_name.as_ptr(),
+            background_in,
+            page_height_in_name.as_ptr(),
+            page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
+            NULL,
+        );
+        utils::result(
+            vips_op_response,
+            utils::new_byte_array(buffer_out, buffer_buf_size),
+            Error::Jp2KsaveBufferError,
+        )
+    }
+}
+
+/// VipsForeignSaveJp2kTarget (jp2ksave_target), save image in JPEG2000 format (.j2k, .jp2, .jpt, .j2c, .jpc), priority=0, any
+/// inp: `&VipsImage` -> Image to save
+/// target: `&VipsTarget` -> Target to save to
+
+pub fn jp_2ksave_target(inp: &VipsImage, target: &VipsTarget) -> Result<()> {
+    unsafe {
+        let inp_in: *mut bindings::VipsImage = inp.ctx;
+        let target_in: *mut bindings::VipsTarget = target.ctx;
+
+        let vips_op_response = bindings::vips_jp2ksave_target(inp_in, target_in, NULL);
+        utils::result(vips_op_response, (), Error::Jp2KsaveTargetError)
+    }
+}
+
+/// Options for jp_2ksave_target operation
+#[derive(Clone, Debug)]
+pub struct Jp2KsaveTargetOptions {
+    /// tile_width: `i32` -> Tile width in pixels
+    /// min: 1, max: 32768, default: 512
+    pub tile_width: i32,
+    /// tile_height: `i32` -> Tile height in pixels
+    /// min: 1, max: 32768, default: 512
+    pub tile_height: i32,
+    /// lossless: `bool` -> Enable lossless compression
+    /// default: false
+    pub lossless: bool,
+    /// q: `i32` -> Q factor
+    /// min: 1, max: 100, default: 48
+    pub q: i32,
+    /// subsample_mode: `ForeignSubsample` -> Select chroma subsample operation mode
+    ///  `Auto` -> VIPS_FOREIGN_SUBSAMPLE_AUTO = 0
+    ///  `On` -> VIPS_FOREIGN_SUBSAMPLE_ON = 1
+    ///  `Off` -> VIPS_FOREIGN_SUBSAMPLE_OFF = 2 [DEFAULT]
+    ///  `Last` -> VIPS_FOREIGN_SUBSAMPLE_LAST = 3
+    pub subsample_mode: ForeignSubsample,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
+    /// background: `Vec<f64>` -> Background value
+    pub background: Vec<f64>,
+    /// page_height: `i32` -> Set page height for multipage save
+    /// min: 0, max: 10000000, default: 0
+    pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
+}
+
+impl std::default::Default for Jp2KsaveTargetOptions {
+    fn default() -> Self {
+        Jp2KsaveTargetOptions {
+            tile_width: i32::from(512),
+            tile_height: i32::from(512),
+            lossless: false,
+            q: i32::from(48),
+            subsample_mode: ForeignSubsample::Off,
+            keep: ForeignKeep::All,
+            background: Vec::new(),
+            page_height: i32::from(0),
+            profile: String::from("sRGB"),
+        }
+    }
+}
+
+/// VipsForeignSaveJp2kTarget (jp2ksave_target), save image in JPEG2000 format (.j2k, .jp2, .jpt, .j2c, .jpc), priority=0, any
+/// inp: `&VipsImage` -> Image to save
+/// target: `&VipsTarget` -> Target to save to
+/// jp_2ksave_target_options: `&Jp2KsaveTargetOptions` -> optional arguments
+
+pub fn jp_2ksave_target_with_opts(
+    inp: &VipsImage,
+    target: &VipsTarget,
+    jp_2ksave_target_options: &Jp2KsaveTargetOptions,
+) -> Result<()> {
+    unsafe {
+        let inp_in: *mut bindings::VipsImage = inp.ctx;
+        let target_in: *mut bindings::VipsTarget = target.ctx;
+
+        let tile_width_in: i32 = jp_2ksave_target_options.tile_width;
+        let tile_width_in_name = utils::new_c_string("tile-width")?;
+
+        let tile_height_in: i32 = jp_2ksave_target_options.tile_height;
+        let tile_height_in_name = utils::new_c_string("tile-height")?;
+
+        let lossless_in: i32 = if jp_2ksave_target_options.lossless {
+            1
+        } else {
+            0
+        };
+        let lossless_in_name = utils::new_c_string("lossless")?;
+
+        let q_in: i32 = jp_2ksave_target_options.q;
+        let q_in_name = utils::new_c_string("Q")?;
+
+        let subsample_mode_in: i32 = jp_2ksave_target_options.subsample_mode as i32;
+        let subsample_mode_in_name = utils::new_c_string("subsample-mode")?;
+
+        let keep_in: i32 = jp_2ksave_target_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
+
+        let background_wrapper =
+            utils::VipsArrayDoubleWrapper::from(&jp_2ksave_target_options.background[..]);
+        let background_in = background_wrapper.ctx;
+        let background_in_name = utils::new_c_string("background")?;
+
+        let page_height_in: i32 = jp_2ksave_target_options.page_height;
+        let page_height_in_name = utils::new_c_string("page-height")?;
+
+        let profile_in: CString = utils::new_c_string(&jp_2ksave_target_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
+        let vips_op_response = bindings::vips_jp2ksave_target(
+            inp_in,
+            target_in,
+            tile_width_in_name.as_ptr(),
+            tile_width_in,
+            tile_height_in_name.as_ptr(),
+            tile_height_in,
+            lossless_in_name.as_ptr(),
+            lossless_in,
+            q_in_name.as_ptr(),
+            q_in,
+            subsample_mode_in_name.as_ptr(),
+            subsample_mode_in,
+            keep_in_name.as_ptr(),
+            keep_in,
+            background_in_name.as_ptr(),
+            background_in,
+            page_height_in_name.as_ptr(),
+            page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
+            NULL,
+        );
+        utils::result(vips_op_response, (), Error::Jp2KsaveTargetError)
     }
 }
 
@@ -13117,20 +16656,31 @@ pub struct GifsaveOptions {
     /// interframe_maxerror: `f64` -> Maximum inter-frame error for transparency
     /// min: 0, max: 32, default: 0
     pub interframe_maxerror: f64,
-    /// reoptimise: `bool` -> Reoptimise colour palettes
+    /// reuse: `bool` -> Reuse palette from input
     /// default: false
-    pub reoptimise: bool,
+    pub reuse: bool,
     /// interpalette_maxerror: `f64` -> Maximum inter-palette error for palette reusage
     /// min: 0, max: 256, default: 3
     pub interpalette_maxerror: f64,
-    /// strip: `bool` -> Strip all metadata from image
+    /// interlace: `bool` -> Generate an interlaced (progressive) GIF
     /// default: false
-    pub strip: bool,
+    pub interlace: bool,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for GifsaveOptions {
@@ -13140,11 +16690,13 @@ impl std::default::Default for GifsaveOptions {
             effort: i32::from(7),
             bitdepth: i32::from(8),
             interframe_maxerror: f64::from(0),
-            reoptimise: false,
+            reuse: false,
             interpalette_maxerror: f64::from(3),
-            strip: false,
+            interlace: false,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
@@ -13175,14 +16727,17 @@ pub fn gifsave_with_opts(
         let interframe_maxerror_in: f64 = gifsave_options.interframe_maxerror;
         let interframe_maxerror_in_name = utils::new_c_string("interframe-maxerror")?;
 
-        let reoptimise_in: i32 = if gifsave_options.reoptimise { 1 } else { 0 };
-        let reoptimise_in_name = utils::new_c_string("reoptimise")?;
+        let reuse_in: i32 = if gifsave_options.reuse { 1 } else { 0 };
+        let reuse_in_name = utils::new_c_string("reuse")?;
 
         let interpalette_maxerror_in: f64 = gifsave_options.interpalette_maxerror;
         let interpalette_maxerror_in_name = utils::new_c_string("interpalette-maxerror")?;
 
-        let strip_in: i32 = if gifsave_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let interlace_in: i32 = if gifsave_options.interlace { 1 } else { 0 };
+        let interlace_in_name = utils::new_c_string("interlace")?;
+
+        let keep_in: i32 = gifsave_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&gifsave_options.background[..]);
@@ -13191,6 +16746,9 @@ pub fn gifsave_with_opts(
 
         let page_height_in: i32 = gifsave_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
+
+        let profile_in: CString = utils::new_c_string(&gifsave_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
 
         let vips_op_response = bindings::vips_gifsave(
             inp_in,
@@ -13203,16 +16761,20 @@ pub fn gifsave_with_opts(
             bitdepth_in,
             interframe_maxerror_in_name.as_ptr(),
             interframe_maxerror_in,
-            reoptimise_in_name.as_ptr(),
-            reoptimise_in,
+            reuse_in_name.as_ptr(),
+            reuse_in,
             interpalette_maxerror_in_name.as_ptr(),
             interpalette_maxerror_in,
-            strip_in_name.as_ptr(),
-            strip_in,
+            interlace_in_name.as_ptr(),
+            interlace_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(vips_op_response, (), Error::GifsaveError)
@@ -13253,20 +16815,31 @@ pub struct GifsaveBufferOptions {
     /// interframe_maxerror: `f64` -> Maximum inter-frame error for transparency
     /// min: 0, max: 32, default: 0
     pub interframe_maxerror: f64,
-    /// reoptimise: `bool` -> Reoptimise colour palettes
+    /// reuse: `bool` -> Reuse palette from input
     /// default: false
-    pub reoptimise: bool,
+    pub reuse: bool,
     /// interpalette_maxerror: `f64` -> Maximum inter-palette error for palette reusage
     /// min: 0, max: 256, default: 3
     pub interpalette_maxerror: f64,
-    /// strip: `bool` -> Strip all metadata from image
+    /// interlace: `bool` -> Generate an interlaced (progressive) GIF
     /// default: false
-    pub strip: bool,
+    pub interlace: bool,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for GifsaveBufferOptions {
@@ -13276,11 +16849,13 @@ impl std::default::Default for GifsaveBufferOptions {
             effort: i32::from(7),
             bitdepth: i32::from(8),
             interframe_maxerror: f64::from(0),
-            reoptimise: false,
+            reuse: false,
             interpalette_maxerror: f64::from(3),
-            strip: false,
+            interlace: false,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
@@ -13310,18 +16885,21 @@ pub fn gifsave_buffer_with_opts(
         let interframe_maxerror_in: f64 = gifsave_buffer_options.interframe_maxerror;
         let interframe_maxerror_in_name = utils::new_c_string("interframe-maxerror")?;
 
-        let reoptimise_in: i32 = if gifsave_buffer_options.reoptimise {
-            1
-        } else {
-            0
-        };
-        let reoptimise_in_name = utils::new_c_string("reoptimise")?;
+        let reuse_in: i32 = if gifsave_buffer_options.reuse { 1 } else { 0 };
+        let reuse_in_name = utils::new_c_string("reuse")?;
 
         let interpalette_maxerror_in: f64 = gifsave_buffer_options.interpalette_maxerror;
         let interpalette_maxerror_in_name = utils::new_c_string("interpalette-maxerror")?;
 
-        let strip_in: i32 = if gifsave_buffer_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let interlace_in: i32 = if gifsave_buffer_options.interlace {
+            1
+        } else {
+            0
+        };
+        let interlace_in_name = utils::new_c_string("interlace")?;
+
+        let keep_in: i32 = gifsave_buffer_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&gifsave_buffer_options.background[..]);
@@ -13330,6 +16908,9 @@ pub fn gifsave_buffer_with_opts(
 
         let page_height_in: i32 = gifsave_buffer_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
+
+        let profile_in: CString = utils::new_c_string(&gifsave_buffer_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
 
         let vips_op_response = bindings::vips_gifsave_buffer(
             inp_in,
@@ -13343,16 +16924,20 @@ pub fn gifsave_buffer_with_opts(
             bitdepth_in,
             interframe_maxerror_in_name.as_ptr(),
             interframe_maxerror_in,
-            reoptimise_in_name.as_ptr(),
-            reoptimise_in,
+            reuse_in_name.as_ptr(),
+            reuse_in,
             interpalette_maxerror_in_name.as_ptr(),
             interpalette_maxerror_in,
-            strip_in_name.as_ptr(),
-            strip_in,
+            interlace_in_name.as_ptr(),
+            interlace_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(
@@ -13392,20 +16977,31 @@ pub struct GifsaveTargetOptions {
     /// interframe_maxerror: `f64` -> Maximum inter-frame error for transparency
     /// min: 0, max: 32, default: 0
     pub interframe_maxerror: f64,
-    /// reoptimise: `bool` -> Reoptimise colour palettes
+    /// reuse: `bool` -> Reuse palette from input
     /// default: false
-    pub reoptimise: bool,
+    pub reuse: bool,
     /// interpalette_maxerror: `f64` -> Maximum inter-palette error for palette reusage
     /// min: 0, max: 256, default: 3
     pub interpalette_maxerror: f64,
-    /// strip: `bool` -> Strip all metadata from image
+    /// interlace: `bool` -> Generate an interlaced (progressive) GIF
     /// default: false
-    pub strip: bool,
+    pub interlace: bool,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for GifsaveTargetOptions {
@@ -13415,11 +17011,13 @@ impl std::default::Default for GifsaveTargetOptions {
             effort: i32::from(7),
             bitdepth: i32::from(8),
             interframe_maxerror: f64::from(0),
-            reoptimise: false,
+            reuse: false,
             interpalette_maxerror: f64::from(3),
-            strip: false,
+            interlace: false,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
@@ -13450,18 +17048,21 @@ pub fn gifsave_target_with_opts(
         let interframe_maxerror_in: f64 = gifsave_target_options.interframe_maxerror;
         let interframe_maxerror_in_name = utils::new_c_string("interframe-maxerror")?;
 
-        let reoptimise_in: i32 = if gifsave_target_options.reoptimise {
-            1
-        } else {
-            0
-        };
-        let reoptimise_in_name = utils::new_c_string("reoptimise")?;
+        let reuse_in: i32 = if gifsave_target_options.reuse { 1 } else { 0 };
+        let reuse_in_name = utils::new_c_string("reuse")?;
 
         let interpalette_maxerror_in: f64 = gifsave_target_options.interpalette_maxerror;
         let interpalette_maxerror_in_name = utils::new_c_string("interpalette-maxerror")?;
 
-        let strip_in: i32 = if gifsave_target_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let interlace_in: i32 = if gifsave_target_options.interlace {
+            1
+        } else {
+            0
+        };
+        let interlace_in_name = utils::new_c_string("interlace")?;
+
+        let keep_in: i32 = gifsave_target_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&gifsave_target_options.background[..]);
@@ -13470,6 +17071,9 @@ pub fn gifsave_target_with_opts(
 
         let page_height_in: i32 = gifsave_target_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
+
+        let profile_in: CString = utils::new_c_string(&gifsave_target_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
 
         let vips_op_response = bindings::vips_gifsave_target(
             inp_in,
@@ -13482,16 +17086,20 @@ pub fn gifsave_target_with_opts(
             bitdepth_in,
             interframe_maxerror_in_name.as_ptr(),
             interframe_maxerror_in,
-            reoptimise_in_name.as_ptr(),
-            reoptimise_in,
+            reuse_in_name.as_ptr(),
+            reuse_in,
             interpalette_maxerror_in_name.as_ptr(),
             interpalette_maxerror_in,
-            strip_in_name.as_ptr(),
-            strip_in,
+            interlace_in_name.as_ptr(),
+            interlace_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(vips_op_response, (), Error::GifsaveTargetError)
@@ -13515,8 +17123,8 @@ pub fn dzsave(inp: &VipsImage, filename: &str) -> Result<()> {
 /// Options for dzsave operation
 #[derive(Clone, Debug)]
 pub struct DzsaveOptions {
-    /// basename: `String` -> Base name to save to
-    pub basename: String,
+    /// imagename: `String` -> Image name
+    pub imagename: String,
     /// layout: `ForeignDzLayout` -> Directory layout
     ///  `Dz` -> VIPS_FOREIGN_DZ_LAYOUT_DZ = 0 [DEFAULT]
     ///  `Zoomify` -> VIPS_FOREIGN_DZ_LAYOUT_ZOOMIFY = 1
@@ -13570,25 +17178,33 @@ pub struct DzsaveOptions {
     /// skip_blanks: `i32` -> Skip tiles which are nearly equal to the background
     /// min: -1, max: 65535, default: -1
     pub skip_blanks: i32,
-    /// no_strip: `bool` -> Don't strip tile metadata
-    /// default: false
-    pub no_strip: bool,
     /// id: `String` -> Resource ID
     pub id: String,
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// q: `i32` -> Q factor
+    /// min: 1, max: 100, default: 75
+    pub q: i32,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for DzsaveOptions {
     fn default() -> Self {
         DzsaveOptions {
-            basename: String::new(),
+            imagename: String::new(),
             layout: ForeignDzLayout::Dz,
             suffix: String::new(),
             overlap: i32::from(1),
@@ -13600,11 +17216,12 @@ impl std::default::Default for DzsaveOptions {
             compression: i32::from(0),
             region_shrink: RegionShrink::Mean,
             skip_blanks: i32::from(-1),
-            no_strip: false,
             id: String::new(),
-            strip: false,
+            q: i32::from(75),
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
@@ -13623,8 +17240,8 @@ pub fn dzsave_with_opts(
         let inp_in: *mut bindings::VipsImage = inp.ctx;
         let filename_in: CString = utils::new_c_string(filename)?;
 
-        let basename_in: CString = utils::new_c_string(&dzsave_options.basename)?;
-        let basename_in_name = utils::new_c_string("basename")?;
+        let imagename_in: CString = utils::new_c_string(&dzsave_options.imagename)?;
+        let imagename_in_name = utils::new_c_string("imagename")?;
 
         let layout_in: i32 = dzsave_options.layout as i32;
         let layout_in_name = utils::new_c_string("layout")?;
@@ -13659,14 +17276,14 @@ pub fn dzsave_with_opts(
         let skip_blanks_in: i32 = dzsave_options.skip_blanks;
         let skip_blanks_in_name = utils::new_c_string("skip-blanks")?;
 
-        let no_strip_in: i32 = if dzsave_options.no_strip { 1 } else { 0 };
-        let no_strip_in_name = utils::new_c_string("no-strip")?;
-
         let id_in: CString = utils::new_c_string(&dzsave_options.id)?;
         let id_in_name = utils::new_c_string("id")?;
 
-        let strip_in: i32 = if dzsave_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let q_in: i32 = dzsave_options.q;
+        let q_in_name = utils::new_c_string("Q")?;
+
+        let keep_in: i32 = dzsave_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&dzsave_options.background[..]);
@@ -13676,11 +17293,14 @@ pub fn dzsave_with_opts(
         let page_height_in: i32 = dzsave_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
 
+        let profile_in: CString = utils::new_c_string(&dzsave_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
         let vips_op_response = bindings::vips_dzsave(
             inp_in,
             filename_in.as_ptr(),
-            basename_in_name.as_ptr(),
-            basename_in.as_ptr(),
+            imagename_in_name.as_ptr(),
+            imagename_in.as_ptr(),
             layout_in_name.as_ptr(),
             layout_in,
             suffix_in_name.as_ptr(),
@@ -13703,41 +17323,48 @@ pub fn dzsave_with_opts(
             region_shrink_in,
             skip_blanks_in_name.as_ptr(),
             skip_blanks_in,
-            no_strip_in_name.as_ptr(),
-            no_strip_in,
             id_in_name.as_ptr(),
             id_in.as_ptr(),
-            strip_in_name.as_ptr(),
-            strip_in,
+            q_in_name.as_ptr(),
+            q_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(vips_op_response, (), Error::DzsaveError)
     }
 }
 
-/// VipsForeignSaveDzTarget (dzsave_target), save image to deepzoom target (.dz, .szi), priority=0, any
+/// VipsForeignSaveDzBuffer (dzsave_buffer), save image to dz buffer (.dz, .szi), priority=0, any
 /// inp: `&VipsImage` -> Image to save
-/// target: `&VipsTarget` -> Target to save to
-
-pub fn dzsave_target(inp: &VipsImage, target: &VipsTarget) -> Result<()> {
+/// returns `Vec<u8>` - Buffer to save to
+pub fn dzsave_buffer(inp: &VipsImage) -> Result<Vec<u8>> {
     unsafe {
         let inp_in: *mut bindings::VipsImage = inp.ctx;
-        let target_in: *mut bindings::VipsTarget = target.ctx;
+        let mut buffer_buf_size: u64 = 0;
+        let mut buffer_out: *mut c_void = null_mut();
 
-        let vips_op_response = bindings::vips_dzsave_target(inp_in, target_in, NULL);
-        utils::result(vips_op_response, (), Error::DzsaveTargetError)
+        let vips_op_response =
+            bindings::vips_dzsave_buffer(inp_in, &mut buffer_out, &mut buffer_buf_size, NULL);
+        utils::result(
+            vips_op_response,
+            utils::new_byte_array(buffer_out, buffer_buf_size),
+            Error::DzsaveBufferError,
+        )
     }
 }
 
-/// Options for dzsave_target operation
+/// Options for dzsave_buffer operation
 #[derive(Clone, Debug)]
-pub struct DzsaveTargetOptions {
-    /// basename: `String` -> Base name to save to
-    pub basename: String,
+pub struct DzsaveBufferOptions {
+    /// imagename: `String` -> Image name
+    pub imagename: String,
     /// layout: `ForeignDzLayout` -> Directory layout
     ///  `Dz` -> VIPS_FOREIGN_DZ_LAYOUT_DZ = 0 [DEFAULT]
     ///  `Zoomify` -> VIPS_FOREIGN_DZ_LAYOUT_ZOOMIFY = 1
@@ -13791,25 +17418,33 @@ pub struct DzsaveTargetOptions {
     /// skip_blanks: `i32` -> Skip tiles which are nearly equal to the background
     /// min: -1, max: 65535, default: -1
     pub skip_blanks: i32,
-    /// no_strip: `bool` -> Don't strip tile metadata
-    /// default: false
-    pub no_strip: bool,
     /// id: `String` -> Resource ID
     pub id: String,
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// q: `i32` -> Q factor
+    /// min: 1, max: 100, default: 75
+    pub q: i32,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
-impl std::default::Default for DzsaveTargetOptions {
+impl std::default::Default for DzsaveBufferOptions {
     fn default() -> Self {
-        DzsaveTargetOptions {
-            basename: String::new(),
+        DzsaveBufferOptions {
+            imagename: String::new(),
             layout: ForeignDzLayout::Dz,
             suffix: String::new(),
             overlap: i32::from(1),
@@ -13821,11 +17456,251 @@ impl std::default::Default for DzsaveTargetOptions {
             compression: i32::from(0),
             region_shrink: RegionShrink::Mean,
             skip_blanks: i32::from(-1),
-            no_strip: false,
             id: String::new(),
-            strip: false,
+            q: i32::from(75),
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
+        }
+    }
+}
+
+/// VipsForeignSaveDzBuffer (dzsave_buffer), save image to dz buffer (.dz, .szi), priority=0, any
+/// inp: `&VipsImage` -> Image to save
+/// dzsave_buffer_options: `&DzsaveBufferOptions` -> optional arguments
+/// returns `Vec<u8>` - Buffer to save to
+pub fn dzsave_buffer_with_opts(
+    inp: &VipsImage,
+    dzsave_buffer_options: &DzsaveBufferOptions,
+) -> Result<Vec<u8>> {
+    unsafe {
+        let inp_in: *mut bindings::VipsImage = inp.ctx;
+        let mut buffer_buf_size: u64 = 0;
+        let mut buffer_out: *mut c_void = null_mut();
+
+        let imagename_in: CString = utils::new_c_string(&dzsave_buffer_options.imagename)?;
+        let imagename_in_name = utils::new_c_string("imagename")?;
+
+        let layout_in: i32 = dzsave_buffer_options.layout as i32;
+        let layout_in_name = utils::new_c_string("layout")?;
+
+        let suffix_in: CString = utils::new_c_string(&dzsave_buffer_options.suffix)?;
+        let suffix_in_name = utils::new_c_string("suffix")?;
+
+        let overlap_in: i32 = dzsave_buffer_options.overlap;
+        let overlap_in_name = utils::new_c_string("overlap")?;
+
+        let tile_size_in: i32 = dzsave_buffer_options.tile_size;
+        let tile_size_in_name = utils::new_c_string("tile-size")?;
+
+        let centre_in: i32 = if dzsave_buffer_options.centre { 1 } else { 0 };
+        let centre_in_name = utils::new_c_string("centre")?;
+
+        let depth_in: i32 = dzsave_buffer_options.depth as i32;
+        let depth_in_name = utils::new_c_string("depth")?;
+
+        let angle_in: i32 = dzsave_buffer_options.angle as i32;
+        let angle_in_name = utils::new_c_string("angle")?;
+
+        let container_in: i32 = dzsave_buffer_options.container as i32;
+        let container_in_name = utils::new_c_string("container")?;
+
+        let compression_in: i32 = dzsave_buffer_options.compression;
+        let compression_in_name = utils::new_c_string("compression")?;
+
+        let region_shrink_in: i32 = dzsave_buffer_options.region_shrink as i32;
+        let region_shrink_in_name = utils::new_c_string("region-shrink")?;
+
+        let skip_blanks_in: i32 = dzsave_buffer_options.skip_blanks;
+        let skip_blanks_in_name = utils::new_c_string("skip-blanks")?;
+
+        let id_in: CString = utils::new_c_string(&dzsave_buffer_options.id)?;
+        let id_in_name = utils::new_c_string("id")?;
+
+        let q_in: i32 = dzsave_buffer_options.q;
+        let q_in_name = utils::new_c_string("Q")?;
+
+        let keep_in: i32 = dzsave_buffer_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
+
+        let background_wrapper =
+            utils::VipsArrayDoubleWrapper::from(&dzsave_buffer_options.background[..]);
+        let background_in = background_wrapper.ctx;
+        let background_in_name = utils::new_c_string("background")?;
+
+        let page_height_in: i32 = dzsave_buffer_options.page_height;
+        let page_height_in_name = utils::new_c_string("page-height")?;
+
+        let profile_in: CString = utils::new_c_string(&dzsave_buffer_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
+        let vips_op_response = bindings::vips_dzsave_buffer(
+            inp_in,
+            &mut buffer_out,
+            &mut buffer_buf_size,
+            imagename_in_name.as_ptr(),
+            imagename_in.as_ptr(),
+            layout_in_name.as_ptr(),
+            layout_in,
+            suffix_in_name.as_ptr(),
+            suffix_in.as_ptr(),
+            overlap_in_name.as_ptr(),
+            overlap_in,
+            tile_size_in_name.as_ptr(),
+            tile_size_in,
+            centre_in_name.as_ptr(),
+            centre_in,
+            depth_in_name.as_ptr(),
+            depth_in,
+            angle_in_name.as_ptr(),
+            angle_in,
+            container_in_name.as_ptr(),
+            container_in,
+            compression_in_name.as_ptr(),
+            compression_in,
+            region_shrink_in_name.as_ptr(),
+            region_shrink_in,
+            skip_blanks_in_name.as_ptr(),
+            skip_blanks_in,
+            id_in_name.as_ptr(),
+            id_in.as_ptr(),
+            q_in_name.as_ptr(),
+            q_in,
+            keep_in_name.as_ptr(),
+            keep_in,
+            background_in_name.as_ptr(),
+            background_in,
+            page_height_in_name.as_ptr(),
+            page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
+            NULL,
+        );
+        utils::result(
+            vips_op_response,
+            utils::new_byte_array(buffer_out, buffer_buf_size),
+            Error::DzsaveBufferError,
+        )
+    }
+}
+
+/// VipsForeignSaveDzTarget (dzsave_target), save image to deepzoom target (.dz, .szi), priority=0, any
+/// inp: `&VipsImage` -> Image to save
+/// target: `&VipsTarget` -> Target to save to
+
+pub fn dzsave_target(inp: &VipsImage, target: &VipsTarget) -> Result<()> {
+    unsafe {
+        let inp_in: *mut bindings::VipsImage = inp.ctx;
+        let target_in: *mut bindings::VipsTarget = target.ctx;
+
+        let vips_op_response = bindings::vips_dzsave_target(inp_in, target_in, NULL);
+        utils::result(vips_op_response, (), Error::DzsaveTargetError)
+    }
+}
+
+/// Options for dzsave_target operation
+#[derive(Clone, Debug)]
+pub struct DzsaveTargetOptions {
+    /// imagename: `String` -> Image name
+    pub imagename: String,
+    /// layout: `ForeignDzLayout` -> Directory layout
+    ///  `Dz` -> VIPS_FOREIGN_DZ_LAYOUT_DZ = 0 [DEFAULT]
+    ///  `Zoomify` -> VIPS_FOREIGN_DZ_LAYOUT_ZOOMIFY = 1
+    ///  `Google` -> VIPS_FOREIGN_DZ_LAYOUT_GOOGLE = 2
+    ///  `Iiif` -> VIPS_FOREIGN_DZ_LAYOUT_IIIF = 3
+    ///  `Iiif3` -> VIPS_FOREIGN_DZ_LAYOUT_IIIF3 = 4
+    ///  `Last` -> VIPS_FOREIGN_DZ_LAYOUT_LAST = 5
+    pub layout: ForeignDzLayout,
+    /// suffix: `String` -> Filename suffix for tiles
+    pub suffix: String,
+    /// overlap: `i32` -> Tile overlap in pixels
+    /// min: 0, max: 8192, default: 1
+    pub overlap: i32,
+    /// tile_size: `i32` -> Tile size in pixels
+    /// min: 1, max: 8192, default: 254
+    pub tile_size: i32,
+    /// centre: `bool` -> Center image in tile
+    /// default: false
+    pub centre: bool,
+    /// depth: `ForeignDzDepth` -> Pyramid depth
+    ///  `Onepixel` -> VIPS_FOREIGN_DZ_DEPTH_ONEPIXEL = 0 [DEFAULT]
+    ///  `Onetile` -> VIPS_FOREIGN_DZ_DEPTH_ONETILE = 1
+    ///  `One` -> VIPS_FOREIGN_DZ_DEPTH_ONE = 2
+    ///  `Last` -> VIPS_FOREIGN_DZ_DEPTH_LAST = 3
+    pub depth: ForeignDzDepth,
+    /// angle: `Angle` -> Rotate image during save
+    ///  `D0` -> VIPS_ANGLE_D0 = 0 [DEFAULT]
+    ///  `D90` -> VIPS_ANGLE_D90 = 1
+    ///  `D180` -> VIPS_ANGLE_D180 = 2
+    ///  `D270` -> VIPS_ANGLE_D270 = 3
+    ///  `Last` -> VIPS_ANGLE_LAST = 4
+    pub angle: Angle,
+    /// container: `ForeignDzContainer` -> Pyramid container type
+    ///  `F` -> VIPS_FOREIGN_DZ_CONTAINER_FS = 0 [DEFAULT]
+    ///  `Zip` -> VIPS_FOREIGN_DZ_CONTAINER_ZIP = 1
+    ///  `Szi` -> VIPS_FOREIGN_DZ_CONTAINER_SZI = 2
+    ///  `Last` -> VIPS_FOREIGN_DZ_CONTAINER_LAST = 3
+    pub container: ForeignDzContainer,
+    /// compression: `i32` -> ZIP deflate compression level
+    /// min: -1, max: 9, default: 0
+    pub compression: i32,
+    /// region_shrink: `RegionShrink` -> Method to shrink regions
+    ///  `Mean` -> VIPS_REGION_SHRINK_MEAN = 0 [DEFAULT]
+    ///  `Median` -> VIPS_REGION_SHRINK_MEDIAN = 1
+    ///  `Mode` -> VIPS_REGION_SHRINK_MODE = 2
+    ///  `Max` -> VIPS_REGION_SHRINK_MAX = 3
+    ///  `Min` -> VIPS_REGION_SHRINK_MIN = 4
+    ///  `Nearest` -> VIPS_REGION_SHRINK_NEAREST = 5
+    ///  `Last` -> VIPS_REGION_SHRINK_LAST = 6
+    pub region_shrink: RegionShrink,
+    /// skip_blanks: `i32` -> Skip tiles which are nearly equal to the background
+    /// min: -1, max: 65535, default: -1
+    pub skip_blanks: i32,
+    /// id: `String` -> Resource ID
+    pub id: String,
+    /// q: `i32` -> Q factor
+    /// min: 1, max: 100, default: 75
+    pub q: i32,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
+    /// background: `Vec<f64>` -> Background value
+    pub background: Vec<f64>,
+    /// page_height: `i32` -> Set page height for multipage save
+    /// min: 0, max: 10000000, default: 0
+    pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
+}
+
+impl std::default::Default for DzsaveTargetOptions {
+    fn default() -> Self {
+        DzsaveTargetOptions {
+            imagename: String::new(),
+            layout: ForeignDzLayout::Dz,
+            suffix: String::new(),
+            overlap: i32::from(1),
+            tile_size: i32::from(254),
+            centre: false,
+            depth: ForeignDzDepth::Onepixel,
+            angle: Angle::D0,
+            container: ForeignDzContainer::F,
+            compression: i32::from(0),
+            region_shrink: RegionShrink::Mean,
+            skip_blanks: i32::from(-1),
+            id: String::new(),
+            q: i32::from(75),
+            keep: ForeignKeep::All,
+            background: Vec::new(),
+            page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
@@ -13844,8 +17719,8 @@ pub fn dzsave_target_with_opts(
         let inp_in: *mut bindings::VipsImage = inp.ctx;
         let target_in: *mut bindings::VipsTarget = target.ctx;
 
-        let basename_in: CString = utils::new_c_string(&dzsave_target_options.basename)?;
-        let basename_in_name = utils::new_c_string("basename")?;
+        let imagename_in: CString = utils::new_c_string(&dzsave_target_options.imagename)?;
+        let imagename_in_name = utils::new_c_string("imagename")?;
 
         let layout_in: i32 = dzsave_target_options.layout as i32;
         let layout_in_name = utils::new_c_string("layout")?;
@@ -13880,14 +17755,14 @@ pub fn dzsave_target_with_opts(
         let skip_blanks_in: i32 = dzsave_target_options.skip_blanks;
         let skip_blanks_in_name = utils::new_c_string("skip-blanks")?;
 
-        let no_strip_in: i32 = if dzsave_target_options.no_strip { 1 } else { 0 };
-        let no_strip_in_name = utils::new_c_string("no-strip")?;
-
         let id_in: CString = utils::new_c_string(&dzsave_target_options.id)?;
         let id_in_name = utils::new_c_string("id")?;
 
-        let strip_in: i32 = if dzsave_target_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let q_in: i32 = dzsave_target_options.q;
+        let q_in_name = utils::new_c_string("Q")?;
+
+        let keep_in: i32 = dzsave_target_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&dzsave_target_options.background[..]);
@@ -13897,11 +17772,14 @@ pub fn dzsave_target_with_opts(
         let page_height_in: i32 = dzsave_target_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
 
+        let profile_in: CString = utils::new_c_string(&dzsave_target_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
         let vips_op_response = bindings::vips_dzsave_target(
             inp_in,
             target_in,
-            basename_in_name.as_ptr(),
-            basename_in.as_ptr(),
+            imagename_in_name.as_ptr(),
+            imagename_in.as_ptr(),
             layout_in_name.as_ptr(),
             layout_in,
             suffix_in_name.as_ptr(),
@@ -13924,23 +17802,25 @@ pub fn dzsave_target_with_opts(
             region_shrink_in,
             skip_blanks_in_name.as_ptr(),
             skip_blanks_in,
-            no_strip_in_name.as_ptr(),
-            no_strip_in,
             id_in_name.as_ptr(),
             id_in.as_ptr(),
-            strip_in_name.as_ptr(),
-            strip_in,
+            q_in_name.as_ptr(),
+            q_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(vips_op_response, (), Error::DzsaveTargetError)
     }
 }
 
-/// VipsForeignSavePngFile (pngsave), save image to png file (.png), priority=0, rgba
+/// VipsForeignSaveSpngFile (pngsave), save image to file as PNG (.png), priority=0, rgba
 /// inp: `&VipsImage` -> Image to save
 /// filename: `&str` -> Filename to save to
 
@@ -13963,9 +17843,7 @@ pub struct PngsaveOptions {
     /// interlace: `bool` -> Interlace image
     /// default: false
     pub interlace: bool,
-    /// profile: `String` -> ICC profile to embed
-    pub profile: String,
-    /// filter: `ForeignPngFilter` -> libpng row filter flag(s)
+    /// filter: `ForeignPngFilter` -> libspng row filter flag(s)
     ///  `None` -> VIPS_FOREIGN_PNG_FILTER_NONE = 8 [DEFAULT]
     ///  `Sub` -> VIPS_FOREIGN_PNG_FILTER_SUB = 16
     ///  `Up` -> VIPS_FOREIGN_PNG_FILTER_UP = 32
@@ -13983,19 +17861,27 @@ pub struct PngsaveOptions {
     /// min: 0, max: 1, default: 1
     pub dither: f64,
     /// bitdepth: `i32` -> Write as a 1, 2, 4, 8 or 16 bit image
-    /// min: 0, max: 16, default: 0
+    /// min: 1, max: 16, default: 8
     pub bitdepth: i32,
     /// effort: `i32` -> Quantisation CPU effort
     /// min: 1, max: 10, default: 7
     pub effort: i32,
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for PngsaveOptions {
@@ -14003,21 +17889,21 @@ impl std::default::Default for PngsaveOptions {
         PngsaveOptions {
             compression: i32::from(6),
             interlace: false,
-            profile: String::from("sRGB"),
             filter: ForeignPngFilter::None,
             palette: false,
             q: i32::from(100),
             dither: f64::from(1),
-            bitdepth: i32::from(0),
+            bitdepth: i32::from(8),
             effort: i32::from(7),
-            strip: false,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
 
-/// VipsForeignSavePngFile (pngsave), save image to png file (.png), priority=0, rgba
+/// VipsForeignSaveSpngFile (pngsave), save image to file as PNG (.png), priority=0, rgba
 /// inp: `&VipsImage` -> Image to save
 /// filename: `&str` -> Filename to save to
 /// pngsave_options: `&PngsaveOptions` -> optional arguments
@@ -14037,9 +17923,6 @@ pub fn pngsave_with_opts(
         let interlace_in: i32 = if pngsave_options.interlace { 1 } else { 0 };
         let interlace_in_name = utils::new_c_string("interlace")?;
 
-        let profile_in: CString = utils::new_c_string(&pngsave_options.profile)?;
-        let profile_in_name = utils::new_c_string("profile")?;
-
         let filter_in: i32 = pngsave_options.filter as i32;
         let filter_in_name = utils::new_c_string("filter")?;
 
@@ -14058,8 +17941,8 @@ pub fn pngsave_with_opts(
         let effort_in: i32 = pngsave_options.effort;
         let effort_in_name = utils::new_c_string("effort")?;
 
-        let strip_in: i32 = if pngsave_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let keep_in: i32 = pngsave_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&pngsave_options.background[..]);
@@ -14069,6 +17952,9 @@ pub fn pngsave_with_opts(
         let page_height_in: i32 = pngsave_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
 
+        let profile_in: CString = utils::new_c_string(&pngsave_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
         let vips_op_response = bindings::vips_pngsave(
             inp_in,
             filename_in.as_ptr(),
@@ -14076,8 +17962,6 @@ pub fn pngsave_with_opts(
             compression_in,
             interlace_in_name.as_ptr(),
             interlace_in,
-            profile_in_name.as_ptr(),
-            profile_in.as_ptr(),
             filter_in_name.as_ptr(),
             filter_in,
             palette_in_name.as_ptr(),
@@ -14090,19 +17974,21 @@ pub fn pngsave_with_opts(
             bitdepth_in,
             effort_in_name.as_ptr(),
             effort_in,
-            strip_in_name.as_ptr(),
-            strip_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(vips_op_response, (), Error::PngsaveError)
     }
 }
 
-/// VipsForeignSavePngBuffer (pngsave_buffer), save image to png buffer (.png), priority=0, rgba
+/// VipsForeignSaveSpngBuffer (pngsave_buffer), save image to buffer as PNG (.png), priority=0, rgba
 /// inp: `&VipsImage` -> Image to save
 /// returns `Vec<u8>` - Buffer to save to
 pub fn pngsave_buffer(inp: &VipsImage) -> Result<Vec<u8>> {
@@ -14130,9 +18016,7 @@ pub struct PngsaveBufferOptions {
     /// interlace: `bool` -> Interlace image
     /// default: false
     pub interlace: bool,
-    /// profile: `String` -> ICC profile to embed
-    pub profile: String,
-    /// filter: `ForeignPngFilter` -> libpng row filter flag(s)
+    /// filter: `ForeignPngFilter` -> libspng row filter flag(s)
     ///  `None` -> VIPS_FOREIGN_PNG_FILTER_NONE = 8 [DEFAULT]
     ///  `Sub` -> VIPS_FOREIGN_PNG_FILTER_SUB = 16
     ///  `Up` -> VIPS_FOREIGN_PNG_FILTER_UP = 32
@@ -14150,19 +18034,27 @@ pub struct PngsaveBufferOptions {
     /// min: 0, max: 1, default: 1
     pub dither: f64,
     /// bitdepth: `i32` -> Write as a 1, 2, 4, 8 or 16 bit image
-    /// min: 0, max: 16, default: 0
+    /// min: 1, max: 16, default: 8
     pub bitdepth: i32,
     /// effort: `i32` -> Quantisation CPU effort
     /// min: 1, max: 10, default: 7
     pub effort: i32,
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for PngsaveBufferOptions {
@@ -14170,21 +18062,21 @@ impl std::default::Default for PngsaveBufferOptions {
         PngsaveBufferOptions {
             compression: i32::from(6),
             interlace: false,
-            profile: String::from("sRGB"),
             filter: ForeignPngFilter::None,
             palette: false,
             q: i32::from(100),
             dither: f64::from(1),
-            bitdepth: i32::from(0),
+            bitdepth: i32::from(8),
             effort: i32::from(7),
-            strip: false,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
 
-/// VipsForeignSavePngBuffer (pngsave_buffer), save image to png buffer (.png), priority=0, rgba
+/// VipsForeignSaveSpngBuffer (pngsave_buffer), save image to buffer as PNG (.png), priority=0, rgba
 /// inp: `&VipsImage` -> Image to save
 /// pngsave_buffer_options: `&PngsaveBufferOptions` -> optional arguments
 /// returns `Vec<u8>` - Buffer to save to
@@ -14207,9 +18099,6 @@ pub fn pngsave_buffer_with_opts(
         };
         let interlace_in_name = utils::new_c_string("interlace")?;
 
-        let profile_in: CString = utils::new_c_string(&pngsave_buffer_options.profile)?;
-        let profile_in_name = utils::new_c_string("profile")?;
-
         let filter_in: i32 = pngsave_buffer_options.filter as i32;
         let filter_in_name = utils::new_c_string("filter")?;
 
@@ -14228,8 +18117,8 @@ pub fn pngsave_buffer_with_opts(
         let effort_in: i32 = pngsave_buffer_options.effort;
         let effort_in_name = utils::new_c_string("effort")?;
 
-        let strip_in: i32 = if pngsave_buffer_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let keep_in: i32 = pngsave_buffer_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&pngsave_buffer_options.background[..]);
@@ -14239,6 +18128,9 @@ pub fn pngsave_buffer_with_opts(
         let page_height_in: i32 = pngsave_buffer_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
 
+        let profile_in: CString = utils::new_c_string(&pngsave_buffer_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
         let vips_op_response = bindings::vips_pngsave_buffer(
             inp_in,
             &mut buffer_out,
@@ -14247,8 +18139,6 @@ pub fn pngsave_buffer_with_opts(
             compression_in,
             interlace_in_name.as_ptr(),
             interlace_in,
-            profile_in_name.as_ptr(),
-            profile_in.as_ptr(),
             filter_in_name.as_ptr(),
             filter_in,
             palette_in_name.as_ptr(),
@@ -14261,12 +18151,14 @@ pub fn pngsave_buffer_with_opts(
             bitdepth_in,
             effort_in_name.as_ptr(),
             effort_in,
-            strip_in_name.as_ptr(),
-            strip_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(
@@ -14277,7 +18169,7 @@ pub fn pngsave_buffer_with_opts(
     }
 }
 
-/// VipsForeignSavePngTarget (pngsave_target), save image to target as PNG (.png), priority=0, rgba
+/// VipsForeignSaveSpngTarget (pngsave_target), save image to target as PNG (.png), priority=0, rgba
 /// inp: `&VipsImage` -> Image to save
 /// target: `&VipsTarget` -> Target to save to
 
@@ -14300,9 +18192,7 @@ pub struct PngsaveTargetOptions {
     /// interlace: `bool` -> Interlace image
     /// default: false
     pub interlace: bool,
-    /// profile: `String` -> ICC profile to embed
-    pub profile: String,
-    /// filter: `ForeignPngFilter` -> libpng row filter flag(s)
+    /// filter: `ForeignPngFilter` -> libspng row filter flag(s)
     ///  `None` -> VIPS_FOREIGN_PNG_FILTER_NONE = 8 [DEFAULT]
     ///  `Sub` -> VIPS_FOREIGN_PNG_FILTER_SUB = 16
     ///  `Up` -> VIPS_FOREIGN_PNG_FILTER_UP = 32
@@ -14320,19 +18210,27 @@ pub struct PngsaveTargetOptions {
     /// min: 0, max: 1, default: 1
     pub dither: f64,
     /// bitdepth: `i32` -> Write as a 1, 2, 4, 8 or 16 bit image
-    /// min: 0, max: 16, default: 0
+    /// min: 1, max: 16, default: 8
     pub bitdepth: i32,
     /// effort: `i32` -> Quantisation CPU effort
     /// min: 1, max: 10, default: 7
     pub effort: i32,
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for PngsaveTargetOptions {
@@ -14340,21 +18238,21 @@ impl std::default::Default for PngsaveTargetOptions {
         PngsaveTargetOptions {
             compression: i32::from(6),
             interlace: false,
-            profile: String::from("sRGB"),
             filter: ForeignPngFilter::None,
             palette: false,
             q: i32::from(100),
             dither: f64::from(1),
-            bitdepth: i32::from(0),
+            bitdepth: i32::from(8),
             effort: i32::from(7),
-            strip: false,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
 
-/// VipsForeignSavePngTarget (pngsave_target), save image to target as PNG (.png), priority=0, rgba
+/// VipsForeignSaveSpngTarget (pngsave_target), save image to target as PNG (.png), priority=0, rgba
 /// inp: `&VipsImage` -> Image to save
 /// target: `&VipsTarget` -> Target to save to
 /// pngsave_target_options: `&PngsaveTargetOptions` -> optional arguments
@@ -14378,9 +18276,6 @@ pub fn pngsave_target_with_opts(
         };
         let interlace_in_name = utils::new_c_string("interlace")?;
 
-        let profile_in: CString = utils::new_c_string(&pngsave_target_options.profile)?;
-        let profile_in_name = utils::new_c_string("profile")?;
-
         let filter_in: i32 = pngsave_target_options.filter as i32;
         let filter_in_name = utils::new_c_string("filter")?;
 
@@ -14399,8 +18294,8 @@ pub fn pngsave_target_with_opts(
         let effort_in: i32 = pngsave_target_options.effort;
         let effort_in_name = utils::new_c_string("effort")?;
 
-        let strip_in: i32 = if pngsave_target_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let keep_in: i32 = pngsave_target_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&pngsave_target_options.background[..]);
@@ -14410,6 +18305,9 @@ pub fn pngsave_target_with_opts(
         let page_height_in: i32 = pngsave_target_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
 
+        let profile_in: CString = utils::new_c_string(&pngsave_target_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
         let vips_op_response = bindings::vips_pngsave_target(
             inp_in,
             target_in,
@@ -14417,8 +18315,6 @@ pub fn pngsave_target_with_opts(
             compression_in,
             interlace_in_name.as_ptr(),
             interlace_in,
-            profile_in_name.as_ptr(),
-            profile_in.as_ptr(),
             filter_in_name.as_ptr(),
             filter_in,
             palette_in_name.as_ptr(),
@@ -14431,19 +18327,21 @@ pub fn pngsave_target_with_opts(
             bitdepth_in,
             effort_in_name.as_ptr(),
             effort_in,
-            strip_in_name.as_ptr(),
-            strip_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(vips_op_response, (), Error::PngsaveTargetError)
     }
 }
 
-/// VipsForeignSaveJpegFile (jpegsave), save image to jpeg file (.jpg, .jpeg, .jpe), priority=0, rgb-cmyk
+/// VipsForeignSaveJpegFile (jpegsave), save image to jpeg file (.jpg, .jpeg, .jpe, .jfif), priority=0, rgb-cmyk
 /// inp: `&VipsImage` -> Image to save
 /// filename: `&str` -> Filename to save to
 
@@ -14463,8 +18361,6 @@ pub struct JpegsaveOptions {
     /// q: `i32` -> Q factor
     /// min: 1, max: 100, default: 75
     pub q: i32,
-    /// profile: `String` -> ICC profile to embed
-    pub profile: String,
     /// optimize_coding: `bool` -> Compute optimal Huffman coding tables
     /// default: false
     pub optimize_coding: bool,
@@ -14492,21 +18388,28 @@ pub struct JpegsaveOptions {
     /// restart_interval: `i32` -> Add restart markers every specified number of mcu
     /// min: 0, max: 2147483647, default: 0
     pub restart_interval: i32,
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for JpegsaveOptions {
     fn default() -> Self {
         JpegsaveOptions {
             q: i32::from(75),
-            profile: String::from("sRGB"),
             optimize_coding: false,
             interlace: false,
             trellis_quant: false,
@@ -14515,14 +18418,15 @@ impl std::default::Default for JpegsaveOptions {
             quant_table: i32::from(0),
             subsample_mode: ForeignSubsample::Auto,
             restart_interval: i32::from(0),
-            strip: false,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
 
-/// VipsForeignSaveJpegFile (jpegsave), save image to jpeg file (.jpg, .jpeg, .jpe), priority=0, rgb-cmyk
+/// VipsForeignSaveJpegFile (jpegsave), save image to jpeg file (.jpg, .jpeg, .jpe, .jfif), priority=0, rgb-cmyk
 /// inp: `&VipsImage` -> Image to save
 /// filename: `&str` -> Filename to save to
 /// jpegsave_options: `&JpegsaveOptions` -> optional arguments
@@ -14538,9 +18442,6 @@ pub fn jpegsave_with_opts(
 
         let q_in: i32 = jpegsave_options.q;
         let q_in_name = utils::new_c_string("Q")?;
-
-        let profile_in: CString = utils::new_c_string(&jpegsave_options.profile)?;
-        let profile_in_name = utils::new_c_string("profile")?;
 
         let optimize_coding_in: i32 = if jpegsave_options.optimize_coding {
             1
@@ -14578,8 +18479,8 @@ pub fn jpegsave_with_opts(
         let restart_interval_in: i32 = jpegsave_options.restart_interval;
         let restart_interval_in_name = utils::new_c_string("restart-interval")?;
 
-        let strip_in: i32 = if jpegsave_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let keep_in: i32 = jpegsave_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&jpegsave_options.background[..]);
@@ -14589,13 +18490,14 @@ pub fn jpegsave_with_opts(
         let page_height_in: i32 = jpegsave_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
 
+        let profile_in: CString = utils::new_c_string(&jpegsave_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
         let vips_op_response = bindings::vips_jpegsave(
             inp_in,
             filename_in.as_ptr(),
             q_in_name.as_ptr(),
             q_in,
-            profile_in_name.as_ptr(),
-            profile_in.as_ptr(),
             optimize_coding_in_name.as_ptr(),
             optimize_coding_in,
             interlace_in_name.as_ptr(),
@@ -14612,19 +18514,21 @@ pub fn jpegsave_with_opts(
             subsample_mode_in,
             restart_interval_in_name.as_ptr(),
             restart_interval_in,
-            strip_in_name.as_ptr(),
-            strip_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(vips_op_response, (), Error::JpegsaveError)
     }
 }
 
-/// VipsForeignSaveJpegBuffer (jpegsave_buffer), save image to jpeg buffer (.jpg, .jpeg, .jpe), priority=0, rgb-cmyk
+/// VipsForeignSaveJpegBuffer (jpegsave_buffer), save image to jpeg buffer (.jpg, .jpeg, .jpe, .jfif), priority=0, rgb-cmyk
 /// inp: `&VipsImage` -> Image to save
 /// returns `Vec<u8>` - Buffer to save to
 pub fn jpegsave_buffer(inp: &VipsImage) -> Result<Vec<u8>> {
@@ -14649,8 +18553,6 @@ pub struct JpegsaveBufferOptions {
     /// q: `i32` -> Q factor
     /// min: 1, max: 100, default: 75
     pub q: i32,
-    /// profile: `String` -> ICC profile to embed
-    pub profile: String,
     /// optimize_coding: `bool` -> Compute optimal Huffman coding tables
     /// default: false
     pub optimize_coding: bool,
@@ -14678,21 +18580,28 @@ pub struct JpegsaveBufferOptions {
     /// restart_interval: `i32` -> Add restart markers every specified number of mcu
     /// min: 0, max: 2147483647, default: 0
     pub restart_interval: i32,
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for JpegsaveBufferOptions {
     fn default() -> Self {
         JpegsaveBufferOptions {
             q: i32::from(75),
-            profile: String::from("sRGB"),
             optimize_coding: false,
             interlace: false,
             trellis_quant: false,
@@ -14701,14 +18610,15 @@ impl std::default::Default for JpegsaveBufferOptions {
             quant_table: i32::from(0),
             subsample_mode: ForeignSubsample::Auto,
             restart_interval: i32::from(0),
-            strip: false,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
 
-/// VipsForeignSaveJpegBuffer (jpegsave_buffer), save image to jpeg buffer (.jpg, .jpeg, .jpe), priority=0, rgb-cmyk
+/// VipsForeignSaveJpegBuffer (jpegsave_buffer), save image to jpeg buffer (.jpg, .jpeg, .jpe, .jfif), priority=0, rgb-cmyk
 /// inp: `&VipsImage` -> Image to save
 /// jpegsave_buffer_options: `&JpegsaveBufferOptions` -> optional arguments
 /// returns `Vec<u8>` - Buffer to save to
@@ -14723,9 +18633,6 @@ pub fn jpegsave_buffer_with_opts(
 
         let q_in: i32 = jpegsave_buffer_options.q;
         let q_in_name = utils::new_c_string("Q")?;
-
-        let profile_in: CString = utils::new_c_string(&jpegsave_buffer_options.profile)?;
-        let profile_in_name = utils::new_c_string("profile")?;
 
         let optimize_coding_in: i32 = if jpegsave_buffer_options.optimize_coding {
             1
@@ -14771,8 +18678,8 @@ pub fn jpegsave_buffer_with_opts(
         let restart_interval_in: i32 = jpegsave_buffer_options.restart_interval;
         let restart_interval_in_name = utils::new_c_string("restart-interval")?;
 
-        let strip_in: i32 = if jpegsave_buffer_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let keep_in: i32 = jpegsave_buffer_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&jpegsave_buffer_options.background[..]);
@@ -14782,14 +18689,15 @@ pub fn jpegsave_buffer_with_opts(
         let page_height_in: i32 = jpegsave_buffer_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
 
+        let profile_in: CString = utils::new_c_string(&jpegsave_buffer_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
         let vips_op_response = bindings::vips_jpegsave_buffer(
             inp_in,
             &mut buffer_out,
             &mut buffer_buf_size,
             q_in_name.as_ptr(),
             q_in,
-            profile_in_name.as_ptr(),
-            profile_in.as_ptr(),
             optimize_coding_in_name.as_ptr(),
             optimize_coding_in,
             interlace_in_name.as_ptr(),
@@ -14806,12 +18714,14 @@ pub fn jpegsave_buffer_with_opts(
             subsample_mode_in,
             restart_interval_in_name.as_ptr(),
             restart_interval_in,
-            strip_in_name.as_ptr(),
-            strip_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(
@@ -14822,7 +18732,7 @@ pub fn jpegsave_buffer_with_opts(
     }
 }
 
-/// VipsForeignSaveJpegTarget (jpegsave_target), save image to jpeg target (.jpg, .jpeg, .jpe), priority=0, rgb-cmyk
+/// VipsForeignSaveJpegTarget (jpegsave_target), save image to jpeg target (.jpg, .jpeg, .jpe, .jfif), priority=0, rgb-cmyk
 /// inp: `&VipsImage` -> Image to save
 /// target: `&VipsTarget` -> Target to save to
 
@@ -14842,8 +18752,6 @@ pub struct JpegsaveTargetOptions {
     /// q: `i32` -> Q factor
     /// min: 1, max: 100, default: 75
     pub q: i32,
-    /// profile: `String` -> ICC profile to embed
-    pub profile: String,
     /// optimize_coding: `bool` -> Compute optimal Huffman coding tables
     /// default: false
     pub optimize_coding: bool,
@@ -14871,21 +18779,28 @@ pub struct JpegsaveTargetOptions {
     /// restart_interval: `i32` -> Add restart markers every specified number of mcu
     /// min: 0, max: 2147483647, default: 0
     pub restart_interval: i32,
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for JpegsaveTargetOptions {
     fn default() -> Self {
         JpegsaveTargetOptions {
             q: i32::from(75),
-            profile: String::from("sRGB"),
             optimize_coding: false,
             interlace: false,
             trellis_quant: false,
@@ -14894,14 +18809,15 @@ impl std::default::Default for JpegsaveTargetOptions {
             quant_table: i32::from(0),
             subsample_mode: ForeignSubsample::Auto,
             restart_interval: i32::from(0),
-            strip: false,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
 
-/// VipsForeignSaveJpegTarget (jpegsave_target), save image to jpeg target (.jpg, .jpeg, .jpe), priority=0, rgb-cmyk
+/// VipsForeignSaveJpegTarget (jpegsave_target), save image to jpeg target (.jpg, .jpeg, .jpe, .jfif), priority=0, rgb-cmyk
 /// inp: `&VipsImage` -> Image to save
 /// target: `&VipsTarget` -> Target to save to
 /// jpegsave_target_options: `&JpegsaveTargetOptions` -> optional arguments
@@ -14917,9 +18833,6 @@ pub fn jpegsave_target_with_opts(
 
         let q_in: i32 = jpegsave_target_options.q;
         let q_in_name = utils::new_c_string("Q")?;
-
-        let profile_in: CString = utils::new_c_string(&jpegsave_target_options.profile)?;
-        let profile_in_name = utils::new_c_string("profile")?;
 
         let optimize_coding_in: i32 = if jpegsave_target_options.optimize_coding {
             1
@@ -14965,8 +18878,8 @@ pub fn jpegsave_target_with_opts(
         let restart_interval_in: i32 = jpegsave_target_options.restart_interval;
         let restart_interval_in_name = utils::new_c_string("restart-interval")?;
 
-        let strip_in: i32 = if jpegsave_target_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let keep_in: i32 = jpegsave_target_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&jpegsave_target_options.background[..]);
@@ -14976,13 +18889,14 @@ pub fn jpegsave_target_with_opts(
         let page_height_in: i32 = jpegsave_target_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
 
+        let profile_in: CString = utils::new_c_string(&jpegsave_target_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
         let vips_op_response = bindings::vips_jpegsave_target(
             inp_in,
             target_in,
             q_in_name.as_ptr(),
             q_in,
-            profile_in_name.as_ptr(),
-            profile_in.as_ptr(),
             optimize_coding_in_name.as_ptr(),
             optimize_coding_in,
             interlace_in_name.as_ptr(),
@@ -14999,19 +18913,21 @@ pub fn jpegsave_target_with_opts(
             subsample_mode_in,
             restart_interval_in_name.as_ptr(),
             restart_interval_in,
-            strip_in_name.as_ptr(),
-            strip_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(vips_op_response, (), Error::JpegsaveTargetError)
     }
 }
 
-/// VipsForeignSaveJpegMime (jpegsave_mime), save image to jpeg mime (.jpg, .jpeg, .jpe), priority=0, rgb-cmyk
+/// VipsForeignSaveJpegMime (jpegsave_mime), save image to jpeg mime (.jpg, .jpeg, .jpe, .jfif), priority=0, rgb-cmyk
 /// inp: `&VipsImage` -> Image to save
 
 pub fn jpegsave_mime(inp: &VipsImage) -> Result<()> {
@@ -15029,8 +18945,6 @@ pub struct JpegsaveMimeOptions {
     /// q: `i32` -> Q factor
     /// min: 1, max: 100, default: 75
     pub q: i32,
-    /// profile: `String` -> ICC profile to embed
-    pub profile: String,
     /// optimize_coding: `bool` -> Compute optimal Huffman coding tables
     /// default: false
     pub optimize_coding: bool,
@@ -15058,21 +18972,28 @@ pub struct JpegsaveMimeOptions {
     /// restart_interval: `i32` -> Add restart markers every specified number of mcu
     /// min: 0, max: 2147483647, default: 0
     pub restart_interval: i32,
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for JpegsaveMimeOptions {
     fn default() -> Self {
         JpegsaveMimeOptions {
             q: i32::from(75),
-            profile: String::from("sRGB"),
             optimize_coding: false,
             interlace: false,
             trellis_quant: false,
@@ -15081,14 +19002,15 @@ impl std::default::Default for JpegsaveMimeOptions {
             quant_table: i32::from(0),
             subsample_mode: ForeignSubsample::Auto,
             restart_interval: i32::from(0),
-            strip: false,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
 
-/// VipsForeignSaveJpegMime (jpegsave_mime), save image to jpeg mime (.jpg, .jpeg, .jpe), priority=0, rgb-cmyk
+/// VipsForeignSaveJpegMime (jpegsave_mime), save image to jpeg mime (.jpg, .jpeg, .jpe, .jfif), priority=0, rgb-cmyk
 /// inp: `&VipsImage` -> Image to save
 /// jpegsave_mime_options: `&JpegsaveMimeOptions` -> optional arguments
 
@@ -15101,9 +19023,6 @@ pub fn jpegsave_mime_with_opts(
 
         let q_in: i32 = jpegsave_mime_options.q;
         let q_in_name = utils::new_c_string("Q")?;
-
-        let profile_in: CString = utils::new_c_string(&jpegsave_mime_options.profile)?;
-        let profile_in_name = utils::new_c_string("profile")?;
 
         let optimize_coding_in: i32 = if jpegsave_mime_options.optimize_coding {
             1
@@ -15149,8 +19068,8 @@ pub fn jpegsave_mime_with_opts(
         let restart_interval_in: i32 = jpegsave_mime_options.restart_interval;
         let restart_interval_in_name = utils::new_c_string("restart-interval")?;
 
-        let strip_in: i32 = if jpegsave_mime_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let keep_in: i32 = jpegsave_mime_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&jpegsave_mime_options.background[..]);
@@ -15160,12 +19079,13 @@ pub fn jpegsave_mime_with_opts(
         let page_height_in: i32 = jpegsave_mime_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
 
+        let profile_in: CString = utils::new_c_string(&jpegsave_mime_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
         let vips_op_response = bindings::vips_jpegsave_mime(
             inp_in,
             q_in_name.as_ptr(),
             q_in,
-            profile_in_name.as_ptr(),
-            profile_in.as_ptr(),
             optimize_coding_in_name.as_ptr(),
             optimize_coding_in,
             interlace_in_name.as_ptr(),
@@ -15182,19 +19102,21 @@ pub fn jpegsave_mime_with_opts(
             subsample_mode_in,
             restart_interval_in_name.as_ptr(),
             restart_interval_in,
-            strip_in_name.as_ptr(),
-            strip_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(vips_op_response, (), Error::JpegsaveMimeError)
     }
 }
 
-/// VipsForeignSaveWebpFile (webpsave), save image to webp file (.webp), priority=0, rgba-only
+/// VipsForeignSaveWebpFile (webpsave), save as WebP (.webp), priority=0, rgba-only
 /// inp: `&VipsImage` -> Image to save
 /// filename: `&str` -> Filename to save to
 
@@ -15247,19 +19169,25 @@ pub struct WebpsaveOptions {
     /// effort: `i32` -> Level of CPU effort to reduce file size
     /// min: 0, max: 6, default: 4
     pub effort: i32,
-    /// profile: `String` -> ICC profile to embed
-    pub profile: String,
     /// mixed: `bool` -> Allow mixed encoding (might reduce file size)
     /// default: false
     pub mixed: bool,
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for WebpsaveOptions {
@@ -15275,16 +19203,16 @@ impl std::default::Default for WebpsaveOptions {
             kmin: i32::from(2147483646),
             kmax: i32::from(2147483647),
             effort: i32::from(4),
-            profile: String::from("sRGB"),
             mixed: false,
-            strip: false,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
 
-/// VipsForeignSaveWebpFile (webpsave), save image to webp file (.webp), priority=0, rgba-only
+/// VipsForeignSaveWebpFile (webpsave), save as WebP (.webp), priority=0, rgba-only
 /// inp: `&VipsImage` -> Image to save
 /// filename: `&str` -> Filename to save to
 /// webpsave_options: `&WebpsaveOptions` -> optional arguments
@@ -15332,14 +19260,11 @@ pub fn webpsave_with_opts(
         let effort_in: i32 = webpsave_options.effort;
         let effort_in_name = utils::new_c_string("effort")?;
 
-        let profile_in: CString = utils::new_c_string(&webpsave_options.profile)?;
-        let profile_in_name = utils::new_c_string("profile")?;
-
         let mixed_in: i32 = if webpsave_options.mixed { 1 } else { 0 };
         let mixed_in_name = utils::new_c_string("mixed")?;
 
-        let strip_in: i32 = if webpsave_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let keep_in: i32 = webpsave_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&webpsave_options.background[..]);
@@ -15348,6 +19273,9 @@ pub fn webpsave_with_opts(
 
         let page_height_in: i32 = webpsave_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
+
+        let profile_in: CString = utils::new_c_string(&webpsave_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
 
         let vips_op_response = bindings::vips_webpsave(
             inp_in,
@@ -15372,23 +19300,23 @@ pub fn webpsave_with_opts(
             kmax_in,
             effort_in_name.as_ptr(),
             effort_in,
-            profile_in_name.as_ptr(),
-            profile_in.as_ptr(),
             mixed_in_name.as_ptr(),
             mixed_in,
-            strip_in_name.as_ptr(),
-            strip_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(vips_op_response, (), Error::WebpsaveError)
     }
 }
 
-/// VipsForeignSaveWebpBuffer (webpsave_buffer), save image to webp buffer (.webp), priority=0, rgba-only
+/// VipsForeignSaveWebpBuffer (webpsave_buffer), save as WebP (.webp), priority=0, rgba-only
 /// inp: `&VipsImage` -> Image to save
 /// returns `Vec<u8>` - Buffer to save to
 pub fn webpsave_buffer(inp: &VipsImage) -> Result<Vec<u8>> {
@@ -15446,19 +19374,25 @@ pub struct WebpsaveBufferOptions {
     /// effort: `i32` -> Level of CPU effort to reduce file size
     /// min: 0, max: 6, default: 4
     pub effort: i32,
-    /// profile: `String` -> ICC profile to embed
-    pub profile: String,
     /// mixed: `bool` -> Allow mixed encoding (might reduce file size)
     /// default: false
     pub mixed: bool,
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for WebpsaveBufferOptions {
@@ -15474,16 +19408,16 @@ impl std::default::Default for WebpsaveBufferOptions {
             kmin: i32::from(2147483646),
             kmax: i32::from(2147483647),
             effort: i32::from(4),
-            profile: String::from("sRGB"),
             mixed: false,
-            strip: false,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
 
-/// VipsForeignSaveWebpBuffer (webpsave_buffer), save image to webp buffer (.webp), priority=0, rgba-only
+/// VipsForeignSaveWebpBuffer (webpsave_buffer), save as WebP (.webp), priority=0, rgba-only
 /// inp: `&VipsImage` -> Image to save
 /// webpsave_buffer_options: `&WebpsaveBufferOptions` -> optional arguments
 /// returns `Vec<u8>` - Buffer to save to
@@ -15542,14 +19476,11 @@ pub fn webpsave_buffer_with_opts(
         let effort_in: i32 = webpsave_buffer_options.effort;
         let effort_in_name = utils::new_c_string("effort")?;
 
-        let profile_in: CString = utils::new_c_string(&webpsave_buffer_options.profile)?;
-        let profile_in_name = utils::new_c_string("profile")?;
-
         let mixed_in: i32 = if webpsave_buffer_options.mixed { 1 } else { 0 };
         let mixed_in_name = utils::new_c_string("mixed")?;
 
-        let strip_in: i32 = if webpsave_buffer_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let keep_in: i32 = webpsave_buffer_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&webpsave_buffer_options.background[..]);
@@ -15558,6 +19489,9 @@ pub fn webpsave_buffer_with_opts(
 
         let page_height_in: i32 = webpsave_buffer_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
+
+        let profile_in: CString = utils::new_c_string(&webpsave_buffer_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
 
         let vips_op_response = bindings::vips_webpsave_buffer(
             inp_in,
@@ -15583,16 +19517,16 @@ pub fn webpsave_buffer_with_opts(
             kmax_in,
             effort_in_name.as_ptr(),
             effort_in,
-            profile_in_name.as_ptr(),
-            profile_in.as_ptr(),
             mixed_in_name.as_ptr(),
             mixed_in,
-            strip_in_name.as_ptr(),
-            strip_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(
@@ -15603,7 +19537,7 @@ pub fn webpsave_buffer_with_opts(
     }
 }
 
-/// VipsForeignSaveWebpTarget (webpsave_target), save image to webp target (.webp), priority=0, rgba-only
+/// VipsForeignSaveWebpTarget (webpsave_target), save as WebP (.webp), priority=0, rgba-only
 /// inp: `&VipsImage` -> Image to save
 /// target: `&VipsTarget` -> Target to save to
 
@@ -15656,19 +19590,25 @@ pub struct WebpsaveTargetOptions {
     /// effort: `i32` -> Level of CPU effort to reduce file size
     /// min: 0, max: 6, default: 4
     pub effort: i32,
-    /// profile: `String` -> ICC profile to embed
-    pub profile: String,
     /// mixed: `bool` -> Allow mixed encoding (might reduce file size)
     /// default: false
     pub mixed: bool,
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for WebpsaveTargetOptions {
@@ -15684,16 +19624,16 @@ impl std::default::Default for WebpsaveTargetOptions {
             kmin: i32::from(2147483646),
             kmax: i32::from(2147483647),
             effort: i32::from(4),
-            profile: String::from("sRGB"),
             mixed: false,
-            strip: false,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
 
-/// VipsForeignSaveWebpTarget (webpsave_target), save image to webp target (.webp), priority=0, rgba-only
+/// VipsForeignSaveWebpTarget (webpsave_target), save as WebP (.webp), priority=0, rgba-only
 /// inp: `&VipsImage` -> Image to save
 /// target: `&VipsTarget` -> Target to save to
 /// webpsave_target_options: `&WebpsaveTargetOptions` -> optional arguments
@@ -15753,14 +19693,11 @@ pub fn webpsave_target_with_opts(
         let effort_in: i32 = webpsave_target_options.effort;
         let effort_in_name = utils::new_c_string("effort")?;
 
-        let profile_in: CString = utils::new_c_string(&webpsave_target_options.profile)?;
-        let profile_in_name = utils::new_c_string("profile")?;
-
         let mixed_in: i32 = if webpsave_target_options.mixed { 1 } else { 0 };
         let mixed_in_name = utils::new_c_string("mixed")?;
 
-        let strip_in: i32 = if webpsave_target_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let keep_in: i32 = webpsave_target_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&webpsave_target_options.background[..]);
@@ -15769,6 +19706,9 @@ pub fn webpsave_target_with_opts(
 
         let page_height_in: i32 = webpsave_target_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
+
+        let profile_in: CString = utils::new_c_string(&webpsave_target_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
 
         let vips_op_response = bindings::vips_webpsave_target(
             inp_in,
@@ -15793,19 +19733,217 @@ pub fn webpsave_target_with_opts(
             kmax_in,
             effort_in_name.as_ptr(),
             effort_in,
-            profile_in_name.as_ptr(),
-            profile_in.as_ptr(),
             mixed_in_name.as_ptr(),
             mixed_in,
-            strip_in_name.as_ptr(),
-            strip_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(vips_op_response, (), Error::WebpsaveTargetError)
+    }
+}
+
+/// VipsForeignSaveWebpMime (webpsave_mime), save image to webp mime (.webp), priority=0, rgba-only
+/// inp: `&VipsImage` -> Image to save
+
+pub fn webpsave_mime(inp: &VipsImage) -> Result<()> {
+    unsafe {
+        let inp_in: *mut bindings::VipsImage = inp.ctx;
+
+        let vips_op_response = bindings::vips_webpsave_mime(inp_in, NULL);
+        utils::result(vips_op_response, (), Error::WebpsaveMimeError)
+    }
+}
+
+/// Options for webpsave_mime operation
+#[derive(Clone, Debug)]
+pub struct WebpsaveMimeOptions {
+    /// q: `i32` -> Q factor
+    /// min: 0, max: 100, default: 75
+    pub q: i32,
+    /// lossless: `bool` -> Enable lossless compression
+    /// default: false
+    pub lossless: bool,
+    /// preset: `ForeignWebpPreset` -> Preset for lossy compression
+    ///  `Default` -> VIPS_FOREIGN_WEBP_PRESET_DEFAULT = 0 [DEFAULT]
+    ///  `Picture` -> VIPS_FOREIGN_WEBP_PRESET_PICTURE = 1
+    ///  `Photo` -> VIPS_FOREIGN_WEBP_PRESET_PHOTO = 2
+    ///  `Drawing` -> VIPS_FOREIGN_WEBP_PRESET_DRAWING = 3
+    ///  `Icon` -> VIPS_FOREIGN_WEBP_PRESET_ICON = 4
+    ///  `Text` -> VIPS_FOREIGN_WEBP_PRESET_TEXT = 5
+    ///  `Last` -> VIPS_FOREIGN_WEBP_PRESET_LAST = 6
+    pub preset: ForeignWebpPreset,
+    /// smart_subsample: `bool` -> Enable high quality chroma subsampling
+    /// default: false
+    pub smart_subsample: bool,
+    /// near_lossless: `bool` -> Enable preprocessing in lossless mode (uses Q)
+    /// default: false
+    pub near_lossless: bool,
+    /// alpha_q: `i32` -> Change alpha plane fidelity for lossy compression
+    /// min: 0, max: 100, default: 100
+    pub alpha_q: i32,
+    /// min_size: `bool` -> Optimise for minimum size
+    /// default: false
+    pub min_size: bool,
+    /// kmin: `i32` -> Minimum number of frames between key frames
+    /// min: 0, max: 2147483647, default: 2147483646
+    pub kmin: i32,
+    /// kmax: `i32` -> Maximum number of frames between key frames
+    /// min: 0, max: 2147483647, default: 2147483647
+    pub kmax: i32,
+    /// effort: `i32` -> Level of CPU effort to reduce file size
+    /// min: 0, max: 6, default: 4
+    pub effort: i32,
+    /// mixed: `bool` -> Allow mixed encoding (might reduce file size)
+    /// default: false
+    pub mixed: bool,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
+    /// background: `Vec<f64>` -> Background value
+    pub background: Vec<f64>,
+    /// page_height: `i32` -> Set page height for multipage save
+    /// min: 0, max: 10000000, default: 0
+    pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
+}
+
+impl std::default::Default for WebpsaveMimeOptions {
+    fn default() -> Self {
+        WebpsaveMimeOptions {
+            q: i32::from(75),
+            lossless: false,
+            preset: ForeignWebpPreset::Default,
+            smart_subsample: false,
+            near_lossless: false,
+            alpha_q: i32::from(100),
+            min_size: false,
+            kmin: i32::from(2147483646),
+            kmax: i32::from(2147483647),
+            effort: i32::from(4),
+            mixed: false,
+            keep: ForeignKeep::All,
+            background: Vec::new(),
+            page_height: i32::from(0),
+            profile: String::from("sRGB"),
+        }
+    }
+}
+
+/// VipsForeignSaveWebpMime (webpsave_mime), save image to webp mime (.webp), priority=0, rgba-only
+/// inp: `&VipsImage` -> Image to save
+/// webpsave_mime_options: `&WebpsaveMimeOptions` -> optional arguments
+
+pub fn webpsave_mime_with_opts(
+    inp: &VipsImage,
+    webpsave_mime_options: &WebpsaveMimeOptions,
+) -> Result<()> {
+    unsafe {
+        let inp_in: *mut bindings::VipsImage = inp.ctx;
+
+        let q_in: i32 = webpsave_mime_options.q;
+        let q_in_name = utils::new_c_string("Q")?;
+
+        let lossless_in: i32 = if webpsave_mime_options.lossless { 1 } else { 0 };
+        let lossless_in_name = utils::new_c_string("lossless")?;
+
+        let preset_in: i32 = webpsave_mime_options.preset as i32;
+        let preset_in_name = utils::new_c_string("preset")?;
+
+        let smart_subsample_in: i32 = if webpsave_mime_options.smart_subsample {
+            1
+        } else {
+            0
+        };
+        let smart_subsample_in_name = utils::new_c_string("smart-subsample")?;
+
+        let near_lossless_in: i32 = if webpsave_mime_options.near_lossless {
+            1
+        } else {
+            0
+        };
+        let near_lossless_in_name = utils::new_c_string("near-lossless")?;
+
+        let alpha_q_in: i32 = webpsave_mime_options.alpha_q;
+        let alpha_q_in_name = utils::new_c_string("alpha-q")?;
+
+        let min_size_in: i32 = if webpsave_mime_options.min_size { 1 } else { 0 };
+        let min_size_in_name = utils::new_c_string("min-size")?;
+
+        let kmin_in: i32 = webpsave_mime_options.kmin;
+        let kmin_in_name = utils::new_c_string("kmin")?;
+
+        let kmax_in: i32 = webpsave_mime_options.kmax;
+        let kmax_in_name = utils::new_c_string("kmax")?;
+
+        let effort_in: i32 = webpsave_mime_options.effort;
+        let effort_in_name = utils::new_c_string("effort")?;
+
+        let mixed_in: i32 = if webpsave_mime_options.mixed { 1 } else { 0 };
+        let mixed_in_name = utils::new_c_string("mixed")?;
+
+        let keep_in: i32 = webpsave_mime_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
+
+        let background_wrapper =
+            utils::VipsArrayDoubleWrapper::from(&webpsave_mime_options.background[..]);
+        let background_in = background_wrapper.ctx;
+        let background_in_name = utils::new_c_string("background")?;
+
+        let page_height_in: i32 = webpsave_mime_options.page_height;
+        let page_height_in_name = utils::new_c_string("page-height")?;
+
+        let profile_in: CString = utils::new_c_string(&webpsave_mime_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
+        let vips_op_response = bindings::vips_webpsave_mime(
+            inp_in,
+            q_in_name.as_ptr(),
+            q_in,
+            lossless_in_name.as_ptr(),
+            lossless_in,
+            preset_in_name.as_ptr(),
+            preset_in,
+            smart_subsample_in_name.as_ptr(),
+            smart_subsample_in,
+            near_lossless_in_name.as_ptr(),
+            near_lossless_in,
+            alpha_q_in_name.as_ptr(),
+            alpha_q_in,
+            min_size_in_name.as_ptr(),
+            min_size_in,
+            kmin_in_name.as_ptr(),
+            kmin_in,
+            kmax_in_name.as_ptr(),
+            kmax_in,
+            effort_in_name.as_ptr(),
+            effort_in,
+            mixed_in_name.as_ptr(),
+            mixed_in,
+            keep_in_name.as_ptr(),
+            keep_in,
+            background_in_name.as_ptr(),
+            background_in,
+            page_height_in_name.as_ptr(),
+            page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
+            NULL,
+        );
+        utils::result(vips_op_response, (), Error::WebpsaveMimeError)
     }
 }
 
@@ -15847,8 +19985,6 @@ pub struct TiffsaveOptions {
     ///  `Float` -> VIPS_FOREIGN_TIFF_PREDICTOR_FLOAT = 3
     ///  `Last` -> VIPS_FOREIGN_TIFF_PREDICTOR_LAST = 4
     pub predictor: ForeignTiffPredictor,
-    /// profile: `String` -> ICC profile to embed
-    pub profile: String,
     /// tile: `bool` -> Write a tiled tiff
     /// default: false
     pub tile: bool,
@@ -15911,14 +20047,22 @@ pub struct TiffsaveOptions {
     /// premultiply: `bool` -> Save with premultiplied alpha
     /// default: false
     pub premultiply: bool,
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for TiffsaveOptions {
@@ -15927,7 +20071,6 @@ impl std::default::Default for TiffsaveOptions {
             compression: ForeignTiffCompression::None,
             q: i32::from(75),
             predictor: ForeignTiffPredictor::Horizontal,
-            profile: String::from("sRGB"),
             tile: false,
             tile_width: i32::from(128),
             tile_height: i32::from(128),
@@ -15945,9 +20088,10 @@ impl std::default::Default for TiffsaveOptions {
             depth: ForeignDzDepth::Onetile,
             subifd: false,
             premultiply: false,
-            strip: false,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
@@ -15974,9 +20118,6 @@ pub fn tiffsave_with_opts(
 
         let predictor_in: i32 = tiffsave_options.predictor as i32;
         let predictor_in_name = utils::new_c_string("predictor")?;
-
-        let profile_in: CString = utils::new_c_string(&tiffsave_options.profile)?;
-        let profile_in_name = utils::new_c_string("profile")?;
 
         let tile_in: i32 = if tiffsave_options.tile { 1 } else { 0 };
         let tile_in_name = utils::new_c_string("tile")?;
@@ -16029,8 +20170,8 @@ pub fn tiffsave_with_opts(
         let premultiply_in: i32 = if tiffsave_options.premultiply { 1 } else { 0 };
         let premultiply_in_name = utils::new_c_string("premultiply")?;
 
-        let strip_in: i32 = if tiffsave_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let keep_in: i32 = tiffsave_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&tiffsave_options.background[..]);
@@ -16039,6 +20180,9 @@ pub fn tiffsave_with_opts(
 
         let page_height_in: i32 = tiffsave_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
+
+        let profile_in: CString = utils::new_c_string(&tiffsave_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
 
         let vips_op_response = bindings::vips_tiffsave(
             inp_in,
@@ -16049,8 +20193,6 @@ pub fn tiffsave_with_opts(
             q_in,
             predictor_in_name.as_ptr(),
             predictor_in,
-            profile_in_name.as_ptr(),
-            profile_in.as_ptr(),
             tile_in_name.as_ptr(),
             tile_in,
             tile_width_in_name.as_ptr(),
@@ -16085,12 +20227,14 @@ pub fn tiffsave_with_opts(
             subifd_in,
             premultiply_in_name.as_ptr(),
             premultiply_in,
-            strip_in_name.as_ptr(),
-            strip_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(vips_op_response, (), Error::TiffsaveError)
@@ -16140,8 +20284,6 @@ pub struct TiffsaveBufferOptions {
     ///  `Float` -> VIPS_FOREIGN_TIFF_PREDICTOR_FLOAT = 3
     ///  `Last` -> VIPS_FOREIGN_TIFF_PREDICTOR_LAST = 4
     pub predictor: ForeignTiffPredictor,
-    /// profile: `String` -> ICC profile to embed
-    pub profile: String,
     /// tile: `bool` -> Write a tiled tiff
     /// default: false
     pub tile: bool,
@@ -16204,14 +20346,22 @@ pub struct TiffsaveBufferOptions {
     /// premultiply: `bool` -> Save with premultiplied alpha
     /// default: false
     pub premultiply: bool,
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for TiffsaveBufferOptions {
@@ -16220,7 +20370,6 @@ impl std::default::Default for TiffsaveBufferOptions {
             compression: ForeignTiffCompression::None,
             q: i32::from(75),
             predictor: ForeignTiffPredictor::Horizontal,
-            profile: String::from("sRGB"),
             tile: false,
             tile_width: i32::from(128),
             tile_height: i32::from(128),
@@ -16238,9 +20387,10 @@ impl std::default::Default for TiffsaveBufferOptions {
             depth: ForeignDzDepth::Onetile,
             subifd: false,
             premultiply: false,
-            strip: false,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
@@ -16266,9 +20416,6 @@ pub fn tiffsave_buffer_with_opts(
 
         let predictor_in: i32 = tiffsave_buffer_options.predictor as i32;
         let predictor_in_name = utils::new_c_string("predictor")?;
-
-        let profile_in: CString = utils::new_c_string(&tiffsave_buffer_options.profile)?;
-        let profile_in_name = utils::new_c_string("profile")?;
 
         let tile_in: i32 = if tiffsave_buffer_options.tile { 1 } else { 0 };
         let tile_in_name = utils::new_c_string("tile")?;
@@ -16345,8 +20492,8 @@ pub fn tiffsave_buffer_with_opts(
         };
         let premultiply_in_name = utils::new_c_string("premultiply")?;
 
-        let strip_in: i32 = if tiffsave_buffer_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let keep_in: i32 = tiffsave_buffer_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&tiffsave_buffer_options.background[..]);
@@ -16355,6 +20502,9 @@ pub fn tiffsave_buffer_with_opts(
 
         let page_height_in: i32 = tiffsave_buffer_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
+
+        let profile_in: CString = utils::new_c_string(&tiffsave_buffer_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
 
         let vips_op_response = bindings::vips_tiffsave_buffer(
             inp_in,
@@ -16366,8 +20516,6 @@ pub fn tiffsave_buffer_with_opts(
             q_in,
             predictor_in_name.as_ptr(),
             predictor_in,
-            profile_in_name.as_ptr(),
-            profile_in.as_ptr(),
             tile_in_name.as_ptr(),
             tile_in,
             tile_width_in_name.as_ptr(),
@@ -16402,12 +20550,14 @@ pub fn tiffsave_buffer_with_opts(
             subifd_in,
             premultiply_in_name.as_ptr(),
             premultiply_in,
-            strip_in_name.as_ptr(),
-            strip_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(
@@ -16456,8 +20606,6 @@ pub struct TiffsaveTargetOptions {
     ///  `Float` -> VIPS_FOREIGN_TIFF_PREDICTOR_FLOAT = 3
     ///  `Last` -> VIPS_FOREIGN_TIFF_PREDICTOR_LAST = 4
     pub predictor: ForeignTiffPredictor,
-    /// profile: `String` -> ICC profile to embed
-    pub profile: String,
     /// tile: `bool` -> Write a tiled tiff
     /// default: false
     pub tile: bool,
@@ -16520,14 +20668,22 @@ pub struct TiffsaveTargetOptions {
     /// premultiply: `bool` -> Save with premultiplied alpha
     /// default: false
     pub premultiply: bool,
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for TiffsaveTargetOptions {
@@ -16536,7 +20692,6 @@ impl std::default::Default for TiffsaveTargetOptions {
             compression: ForeignTiffCompression::None,
             q: i32::from(75),
             predictor: ForeignTiffPredictor::Horizontal,
-            profile: String::from("sRGB"),
             tile: false,
             tile_width: i32::from(128),
             tile_height: i32::from(128),
@@ -16554,9 +20709,10 @@ impl std::default::Default for TiffsaveTargetOptions {
             depth: ForeignDzDepth::Onetile,
             subifd: false,
             premultiply: false,
-            strip: false,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
@@ -16583,9 +20739,6 @@ pub fn tiffsave_target_with_opts(
 
         let predictor_in: i32 = tiffsave_target_options.predictor as i32;
         let predictor_in_name = utils::new_c_string("predictor")?;
-
-        let profile_in: CString = utils::new_c_string(&tiffsave_target_options.profile)?;
-        let profile_in_name = utils::new_c_string("profile")?;
 
         let tile_in: i32 = if tiffsave_target_options.tile { 1 } else { 0 };
         let tile_in_name = utils::new_c_string("tile")?;
@@ -16662,8 +20815,8 @@ pub fn tiffsave_target_with_opts(
         };
         let premultiply_in_name = utils::new_c_string("premultiply")?;
 
-        let strip_in: i32 = if tiffsave_target_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let keep_in: i32 = tiffsave_target_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&tiffsave_target_options.background[..]);
@@ -16672,6 +20825,9 @@ pub fn tiffsave_target_with_opts(
 
         let page_height_in: i32 = tiffsave_target_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
+
+        let profile_in: CString = utils::new_c_string(&tiffsave_target_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
 
         let vips_op_response = bindings::vips_tiffsave_target(
             inp_in,
@@ -16682,8 +20838,6 @@ pub fn tiffsave_target_with_opts(
             q_in,
             predictor_in_name.as_ptr(),
             predictor_in,
-            profile_in_name.as_ptr(),
-            profile_in.as_ptr(),
             tile_in_name.as_ptr(),
             tile_in,
             tile_width_in_name.as_ptr(),
@@ -16718,15 +20872,108 @@ pub fn tiffsave_target_with_opts(
             subifd_in,
             premultiply_in_name.as_ptr(),
             premultiply_in,
-            strip_in_name.as_ptr(),
-            strip_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(vips_op_response, (), Error::TiffsaveTargetError)
+    }
+}
+
+/// VipsForeignSaveFits (fitssave), save image to fits file (.fits, .fit, .fts), priority=0, untrusted, any
+/// inp: `&VipsImage` -> Image to save
+/// filename: `&str` -> Filename to save to
+
+pub fn fitssave(inp: &VipsImage, filename: &str) -> Result<()> {
+    unsafe {
+        let inp_in: *mut bindings::VipsImage = inp.ctx;
+        let filename_in: CString = utils::new_c_string(filename)?;
+
+        let vips_op_response = bindings::vips_fitssave(inp_in, filename_in.as_ptr(), NULL);
+        utils::result(vips_op_response, (), Error::FitssaveError)
+    }
+}
+
+/// Options for fitssave operation
+#[derive(Clone, Debug)]
+pub struct FitssaveOptions {
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
+    /// background: `Vec<f64>` -> Background value
+    pub background: Vec<f64>,
+    /// page_height: `i32` -> Set page height for multipage save
+    /// min: 0, max: 10000000, default: 0
+    pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
+}
+
+impl std::default::Default for FitssaveOptions {
+    fn default() -> Self {
+        FitssaveOptions {
+            keep: ForeignKeep::All,
+            background: Vec::new(),
+            page_height: i32::from(0),
+            profile: String::from("sRGB"),
+        }
+    }
+}
+
+/// VipsForeignSaveFits (fitssave), save image to fits file (.fits, .fit, .fts), priority=0, untrusted, any
+/// inp: `&VipsImage` -> Image to save
+/// filename: `&str` -> Filename to save to
+/// fitssave_options: `&FitssaveOptions` -> optional arguments
+
+pub fn fitssave_with_opts(
+    inp: &VipsImage,
+    filename: &str,
+    fitssave_options: &FitssaveOptions,
+) -> Result<()> {
+    unsafe {
+        let inp_in: *mut bindings::VipsImage = inp.ctx;
+        let filename_in: CString = utils::new_c_string(filename)?;
+
+        let keep_in: i32 = fitssave_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
+
+        let background_wrapper =
+            utils::VipsArrayDoubleWrapper::from(&fitssave_options.background[..]);
+        let background_in = background_wrapper.ctx;
+        let background_in_name = utils::new_c_string("background")?;
+
+        let page_height_in: i32 = fitssave_options.page_height;
+        let page_height_in_name = utils::new_c_string("page-height")?;
+
+        let profile_in: CString = utils::new_c_string(&fitssave_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
+        let vips_op_response = bindings::vips_fitssave(
+            inp_in,
+            filename_in.as_ptr(),
+            keep_in_name.as_ptr(),
+            keep_in,
+            background_in_name.as_ptr(),
+            background_in,
+            page_height_in_name.as_ptr(),
+            page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
+            NULL,
+        );
+        utils::result(vips_op_response, (), Error::FitssaveError)
     }
 }
 
@@ -16772,14 +21019,30 @@ pub struct HeifsaveOptions {
     ///  `Off` -> VIPS_FOREIGN_SUBSAMPLE_OFF = 2
     ///  `Last` -> VIPS_FOREIGN_SUBSAMPLE_LAST = 3
     pub subsample_mode: ForeignSubsample,
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// encoder: `ForeignHeifEncoder` -> Select encoder to use
+    ///  `Auto` -> VIPS_FOREIGN_HEIF_ENCODER_AUTO = 0 [DEFAULT]
+    ///  `Aom` -> VIPS_FOREIGN_HEIF_ENCODER_AOM = 1
+    ///  `Rav1E` -> VIPS_FOREIGN_HEIF_ENCODER_RAV1E = 2
+    ///  `Svt` -> VIPS_FOREIGN_HEIF_ENCODER_SVT = 3
+    ///  `X265` -> VIPS_FOREIGN_HEIF_ENCODER_X265 = 4
+    ///  `Last` -> VIPS_FOREIGN_HEIF_ENCODER_LAST = 5
+    pub encoder: ForeignHeifEncoder,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for HeifsaveOptions {
@@ -16791,9 +21054,11 @@ impl std::default::Default for HeifsaveOptions {
             compression: ForeignHeifCompression::Hevc,
             effort: i32::from(4),
             subsample_mode: ForeignSubsample::Auto,
-            strip: false,
+            encoder: ForeignHeifEncoder::Auto,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
@@ -16830,8 +21095,11 @@ pub fn heifsave_with_opts(
         let subsample_mode_in: i32 = heifsave_options.subsample_mode as i32;
         let subsample_mode_in_name = utils::new_c_string("subsample-mode")?;
 
-        let strip_in: i32 = if heifsave_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let encoder_in: i32 = heifsave_options.encoder as i32;
+        let encoder_in_name = utils::new_c_string("encoder")?;
+
+        let keep_in: i32 = heifsave_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&heifsave_options.background[..]);
@@ -16840,6 +21108,9 @@ pub fn heifsave_with_opts(
 
         let page_height_in: i32 = heifsave_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
+
+        let profile_in: CString = utils::new_c_string(&heifsave_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
 
         let vips_op_response = bindings::vips_heifsave(
             inp_in,
@@ -16856,12 +21127,16 @@ pub fn heifsave_with_opts(
             effort_in,
             subsample_mode_in_name.as_ptr(),
             subsample_mode_in,
-            strip_in_name.as_ptr(),
-            strip_in,
+            encoder_in_name.as_ptr(),
+            encoder_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(vips_op_response, (), Error::HeifsaveError)
@@ -16915,14 +21190,30 @@ pub struct HeifsaveBufferOptions {
     ///  `Off` -> VIPS_FOREIGN_SUBSAMPLE_OFF = 2
     ///  `Last` -> VIPS_FOREIGN_SUBSAMPLE_LAST = 3
     pub subsample_mode: ForeignSubsample,
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// encoder: `ForeignHeifEncoder` -> Select encoder to use
+    ///  `Auto` -> VIPS_FOREIGN_HEIF_ENCODER_AUTO = 0 [DEFAULT]
+    ///  `Aom` -> VIPS_FOREIGN_HEIF_ENCODER_AOM = 1
+    ///  `Rav1E` -> VIPS_FOREIGN_HEIF_ENCODER_RAV1E = 2
+    ///  `Svt` -> VIPS_FOREIGN_HEIF_ENCODER_SVT = 3
+    ///  `X265` -> VIPS_FOREIGN_HEIF_ENCODER_X265 = 4
+    ///  `Last` -> VIPS_FOREIGN_HEIF_ENCODER_LAST = 5
+    pub encoder: ForeignHeifEncoder,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for HeifsaveBufferOptions {
@@ -16934,9 +21225,11 @@ impl std::default::Default for HeifsaveBufferOptions {
             compression: ForeignHeifCompression::Hevc,
             effort: i32::from(4),
             subsample_mode: ForeignSubsample::Auto,
-            strip: false,
+            encoder: ForeignHeifEncoder::Auto,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
@@ -16976,8 +21269,11 @@ pub fn heifsave_buffer_with_opts(
         let subsample_mode_in: i32 = heifsave_buffer_options.subsample_mode as i32;
         let subsample_mode_in_name = utils::new_c_string("subsample-mode")?;
 
-        let strip_in: i32 = if heifsave_buffer_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let encoder_in: i32 = heifsave_buffer_options.encoder as i32;
+        let encoder_in_name = utils::new_c_string("encoder")?;
+
+        let keep_in: i32 = heifsave_buffer_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&heifsave_buffer_options.background[..]);
@@ -16986,6 +21282,9 @@ pub fn heifsave_buffer_with_opts(
 
         let page_height_in: i32 = heifsave_buffer_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
+
+        let profile_in: CString = utils::new_c_string(&heifsave_buffer_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
 
         let vips_op_response = bindings::vips_heifsave_buffer(
             inp_in,
@@ -17003,12 +21302,16 @@ pub fn heifsave_buffer_with_opts(
             effort_in,
             subsample_mode_in_name.as_ptr(),
             subsample_mode_in,
-            strip_in_name.as_ptr(),
-            strip_in,
+            encoder_in_name.as_ptr(),
+            encoder_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(
@@ -17061,14 +21364,30 @@ pub struct HeifsaveTargetOptions {
     ///  `Off` -> VIPS_FOREIGN_SUBSAMPLE_OFF = 2
     ///  `Last` -> VIPS_FOREIGN_SUBSAMPLE_LAST = 3
     pub subsample_mode: ForeignSubsample,
-    /// strip: `bool` -> Strip all metadata from image
-    /// default: false
-    pub strip: bool,
+    /// encoder: `ForeignHeifEncoder` -> Select encoder to use
+    ///  `Auto` -> VIPS_FOREIGN_HEIF_ENCODER_AUTO = 0 [DEFAULT]
+    ///  `Aom` -> VIPS_FOREIGN_HEIF_ENCODER_AOM = 1
+    ///  `Rav1E` -> VIPS_FOREIGN_HEIF_ENCODER_RAV1E = 2
+    ///  `Svt` -> VIPS_FOREIGN_HEIF_ENCODER_SVT = 3
+    ///  `X265` -> VIPS_FOREIGN_HEIF_ENCODER_X265 = 4
+    ///  `Last` -> VIPS_FOREIGN_HEIF_ENCODER_LAST = 5
+    pub encoder: ForeignHeifEncoder,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
     /// background: `Vec<f64>` -> Background value
     pub background: Vec<f64>,
     /// page_height: `i32` -> Set page height for multipage save
     /// min: 0, max: 10000000, default: 0
     pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
 }
 
 impl std::default::Default for HeifsaveTargetOptions {
@@ -17080,9 +21399,11 @@ impl std::default::Default for HeifsaveTargetOptions {
             compression: ForeignHeifCompression::Hevc,
             effort: i32::from(4),
             subsample_mode: ForeignSubsample::Auto,
-            strip: false,
+            encoder: ForeignHeifEncoder::Auto,
+            keep: ForeignKeep::All,
             background: Vec::new(),
             page_height: i32::from(0),
+            profile: String::from("sRGB"),
         }
     }
 }
@@ -17123,8 +21444,11 @@ pub fn heifsave_target_with_opts(
         let subsample_mode_in: i32 = heifsave_target_options.subsample_mode as i32;
         let subsample_mode_in_name = utils::new_c_string("subsample-mode")?;
 
-        let strip_in: i32 = if heifsave_target_options.strip { 1 } else { 0 };
-        let strip_in_name = utils::new_c_string("strip")?;
+        let encoder_in: i32 = heifsave_target_options.encoder as i32;
+        let encoder_in_name = utils::new_c_string("encoder")?;
+
+        let keep_in: i32 = heifsave_target_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
 
         let background_wrapper =
             utils::VipsArrayDoubleWrapper::from(&heifsave_target_options.background[..]);
@@ -17133,6 +21457,9 @@ pub fn heifsave_target_with_opts(
 
         let page_height_in: i32 = heifsave_target_options.page_height;
         let page_height_in_name = utils::new_c_string("page-height")?;
+
+        let profile_in: CString = utils::new_c_string(&heifsave_target_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
 
         let vips_op_response = bindings::vips_heifsave_target(
             inp_in,
@@ -17149,15 +21476,740 @@ pub fn heifsave_target_with_opts(
             effort_in,
             subsample_mode_in_name.as_ptr(),
             subsample_mode_in,
-            strip_in_name.as_ptr(),
-            strip_in,
+            encoder_in_name.as_ptr(),
+            encoder_in,
+            keep_in_name.as_ptr(),
+            keep_in,
             background_in_name.as_ptr(),
             background_in,
             page_height_in_name.as_ptr(),
             page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
             NULL,
         );
         utils::result(vips_op_response, (), Error::HeifsaveTargetError)
+    }
+}
+
+/// VipsForeignSaveMagickFile (magicksave), save file with ImageMagick (), priority=-100, untrusted, any
+/// inp: `&VipsImage` -> Image to save
+/// filename: `&str` -> Filename to save to
+
+pub fn magicksave(inp: &VipsImage, filename: &str) -> Result<()> {
+    unsafe {
+        let inp_in: *mut bindings::VipsImage = inp.ctx;
+        let filename_in: CString = utils::new_c_string(filename)?;
+
+        let vips_op_response = bindings::vips_magicksave(inp_in, filename_in.as_ptr(), NULL);
+        utils::result(vips_op_response, (), Error::MagicksaveError)
+    }
+}
+
+/// Options for magicksave operation
+#[derive(Clone, Debug)]
+pub struct MagicksaveOptions {
+    /// format: `String` -> Format to save in
+    pub format: String,
+    /// quality: `i32` -> Quality to use
+    /// min: 0, max: 100, default: 0
+    pub quality: i32,
+    /// optimize_gif_frames: `bool` -> Apply GIF frames optimization
+    /// default: false
+    pub optimize_gif_frames: bool,
+    /// optimize_gif_transparency: `bool` -> Apply GIF transparency optimization
+    /// default: false
+    pub optimize_gif_transparency: bool,
+    /// bitdepth: `i32` -> Number of bits per pixel
+    /// min: 0, max: 8, default: 0
+    pub bitdepth: i32,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
+    /// background: `Vec<f64>` -> Background value
+    pub background: Vec<f64>,
+    /// page_height: `i32` -> Set page height for multipage save
+    /// min: 0, max: 10000000, default: 0
+    pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
+}
+
+impl std::default::Default for MagicksaveOptions {
+    fn default() -> Self {
+        MagicksaveOptions {
+            format: String::new(),
+            quality: i32::from(0),
+            optimize_gif_frames: false,
+            optimize_gif_transparency: false,
+            bitdepth: i32::from(0),
+            keep: ForeignKeep::All,
+            background: Vec::new(),
+            page_height: i32::from(0),
+            profile: String::from("sRGB"),
+        }
+    }
+}
+
+/// VipsForeignSaveMagickFile (magicksave), save file with ImageMagick (), priority=-100, untrusted, any
+/// inp: `&VipsImage` -> Image to save
+/// filename: `&str` -> Filename to save to
+/// magicksave_options: `&MagicksaveOptions` -> optional arguments
+
+pub fn magicksave_with_opts(
+    inp: &VipsImage,
+    filename: &str,
+    magicksave_options: &MagicksaveOptions,
+) -> Result<()> {
+    unsafe {
+        let inp_in: *mut bindings::VipsImage = inp.ctx;
+        let filename_in: CString = utils::new_c_string(filename)?;
+
+        let format_in: CString = utils::new_c_string(&magicksave_options.format)?;
+        let format_in_name = utils::new_c_string("format")?;
+
+        let quality_in: i32 = magicksave_options.quality;
+        let quality_in_name = utils::new_c_string("quality")?;
+
+        let optimize_gif_frames_in: i32 = if magicksave_options.optimize_gif_frames {
+            1
+        } else {
+            0
+        };
+        let optimize_gif_frames_in_name = utils::new_c_string("optimize-gif-frames")?;
+
+        let optimize_gif_transparency_in: i32 = if magicksave_options.optimize_gif_transparency {
+            1
+        } else {
+            0
+        };
+        let optimize_gif_transparency_in_name = utils::new_c_string("optimize-gif-transparency")?;
+
+        let bitdepth_in: i32 = magicksave_options.bitdepth;
+        let bitdepth_in_name = utils::new_c_string("bitdepth")?;
+
+        let keep_in: i32 = magicksave_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
+
+        let background_wrapper =
+            utils::VipsArrayDoubleWrapper::from(&magicksave_options.background[..]);
+        let background_in = background_wrapper.ctx;
+        let background_in_name = utils::new_c_string("background")?;
+
+        let page_height_in: i32 = magicksave_options.page_height;
+        let page_height_in_name = utils::new_c_string("page-height")?;
+
+        let profile_in: CString = utils::new_c_string(&magicksave_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
+        let vips_op_response = bindings::vips_magicksave(
+            inp_in,
+            filename_in.as_ptr(),
+            format_in_name.as_ptr(),
+            format_in.as_ptr(),
+            quality_in_name.as_ptr(),
+            quality_in,
+            optimize_gif_frames_in_name.as_ptr(),
+            optimize_gif_frames_in,
+            optimize_gif_transparency_in_name.as_ptr(),
+            optimize_gif_transparency_in,
+            bitdepth_in_name.as_ptr(),
+            bitdepth_in,
+            keep_in_name.as_ptr(),
+            keep_in,
+            background_in_name.as_ptr(),
+            background_in,
+            page_height_in_name.as_ptr(),
+            page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
+            NULL,
+        );
+        utils::result(vips_op_response, (), Error::MagicksaveError)
+    }
+}
+
+/// VipsForeignSaveMagickBuffer (magicksave_buffer), save image to magick buffer (), priority=-100, untrusted, any
+/// inp: `&VipsImage` -> Image to save
+/// returns `Vec<u8>` - Buffer to save to
+pub fn magicksave_buffer(inp: &VipsImage) -> Result<Vec<u8>> {
+    unsafe {
+        let inp_in: *mut bindings::VipsImage = inp.ctx;
+        let mut buffer_buf_size: u64 = 0;
+        let mut buffer_out: *mut c_void = null_mut();
+
+        let vips_op_response =
+            bindings::vips_magicksave_buffer(inp_in, &mut buffer_out, &mut buffer_buf_size, NULL);
+        utils::result(
+            vips_op_response,
+            utils::new_byte_array(buffer_out, buffer_buf_size),
+            Error::MagicksaveBufferError,
+        )
+    }
+}
+
+/// Options for magicksave_buffer operation
+#[derive(Clone, Debug)]
+pub struct MagicksaveBufferOptions {
+    /// format: `String` -> Format to save in
+    pub format: String,
+    /// quality: `i32` -> Quality to use
+    /// min: 0, max: 100, default: 0
+    pub quality: i32,
+    /// optimize_gif_frames: `bool` -> Apply GIF frames optimization
+    /// default: false
+    pub optimize_gif_frames: bool,
+    /// optimize_gif_transparency: `bool` -> Apply GIF transparency optimization
+    /// default: false
+    pub optimize_gif_transparency: bool,
+    /// bitdepth: `i32` -> Number of bits per pixel
+    /// min: 0, max: 8, default: 0
+    pub bitdepth: i32,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
+    /// background: `Vec<f64>` -> Background value
+    pub background: Vec<f64>,
+    /// page_height: `i32` -> Set page height for multipage save
+    /// min: 0, max: 10000000, default: 0
+    pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
+}
+
+impl std::default::Default for MagicksaveBufferOptions {
+    fn default() -> Self {
+        MagicksaveBufferOptions {
+            format: String::new(),
+            quality: i32::from(0),
+            optimize_gif_frames: false,
+            optimize_gif_transparency: false,
+            bitdepth: i32::from(0),
+            keep: ForeignKeep::All,
+            background: Vec::new(),
+            page_height: i32::from(0),
+            profile: String::from("sRGB"),
+        }
+    }
+}
+
+/// VipsForeignSaveMagickBuffer (magicksave_buffer), save image to magick buffer (), priority=-100, untrusted, any
+/// inp: `&VipsImage` -> Image to save
+/// magicksave_buffer_options: `&MagicksaveBufferOptions` -> optional arguments
+/// returns `Vec<u8>` - Buffer to save to
+pub fn magicksave_buffer_with_opts(
+    inp: &VipsImage,
+    magicksave_buffer_options: &MagicksaveBufferOptions,
+) -> Result<Vec<u8>> {
+    unsafe {
+        let inp_in: *mut bindings::VipsImage = inp.ctx;
+        let mut buffer_buf_size: u64 = 0;
+        let mut buffer_out: *mut c_void = null_mut();
+
+        let format_in: CString = utils::new_c_string(&magicksave_buffer_options.format)?;
+        let format_in_name = utils::new_c_string("format")?;
+
+        let quality_in: i32 = magicksave_buffer_options.quality;
+        let quality_in_name = utils::new_c_string("quality")?;
+
+        let optimize_gif_frames_in: i32 = if magicksave_buffer_options.optimize_gif_frames {
+            1
+        } else {
+            0
+        };
+        let optimize_gif_frames_in_name = utils::new_c_string("optimize-gif-frames")?;
+
+        let optimize_gif_transparency_in: i32 =
+            if magicksave_buffer_options.optimize_gif_transparency {
+                1
+            } else {
+                0
+            };
+        let optimize_gif_transparency_in_name = utils::new_c_string("optimize-gif-transparency")?;
+
+        let bitdepth_in: i32 = magicksave_buffer_options.bitdepth;
+        let bitdepth_in_name = utils::new_c_string("bitdepth")?;
+
+        let keep_in: i32 = magicksave_buffer_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
+
+        let background_wrapper =
+            utils::VipsArrayDoubleWrapper::from(&magicksave_buffer_options.background[..]);
+        let background_in = background_wrapper.ctx;
+        let background_in_name = utils::new_c_string("background")?;
+
+        let page_height_in: i32 = magicksave_buffer_options.page_height;
+        let page_height_in_name = utils::new_c_string("page-height")?;
+
+        let profile_in: CString = utils::new_c_string(&magicksave_buffer_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
+        let vips_op_response = bindings::vips_magicksave_buffer(
+            inp_in,
+            &mut buffer_out,
+            &mut buffer_buf_size,
+            format_in_name.as_ptr(),
+            format_in.as_ptr(),
+            quality_in_name.as_ptr(),
+            quality_in,
+            optimize_gif_frames_in_name.as_ptr(),
+            optimize_gif_frames_in,
+            optimize_gif_transparency_in_name.as_ptr(),
+            optimize_gif_transparency_in,
+            bitdepth_in_name.as_ptr(),
+            bitdepth_in,
+            keep_in_name.as_ptr(),
+            keep_in,
+            background_in_name.as_ptr(),
+            background_in,
+            page_height_in_name.as_ptr(),
+            page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
+            NULL,
+        );
+        utils::result(
+            vips_op_response,
+            utils::new_byte_array(buffer_out, buffer_buf_size),
+            Error::MagicksaveBufferError,
+        )
+    }
+}
+
+/// VipsForeignSaveJxlFile (jxlsave), save image in JPEG-XL format (.jxl), priority=0, untrusted, any
+/// inp: `&VipsImage` -> Image to save
+/// filename: `&str` -> Filename to load from
+
+pub fn jxlsave(inp: &VipsImage, filename: &str) -> Result<()> {
+    unsafe {
+        let inp_in: *mut bindings::VipsImage = inp.ctx;
+        let filename_in: CString = utils::new_c_string(filename)?;
+
+        let vips_op_response = bindings::vips_jxlsave(inp_in, filename_in.as_ptr(), NULL);
+        utils::result(vips_op_response, (), Error::JxlsaveError)
+    }
+}
+
+/// Options for jxlsave operation
+#[derive(Clone, Debug)]
+pub struct JxlsaveOptions {
+    /// tier: `i32` -> Decode speed tier
+    /// min: 0, max: 4, default: 0
+    pub tier: i32,
+    /// distance: `f64` -> Target butteraugli distance
+    /// min: 0, max: 25, default: 1
+    pub distance: f64,
+    /// effort: `i32` -> Encoding effort
+    /// min: 1, max: 9, default: 7
+    pub effort: i32,
+    /// lossless: `bool` -> Enable lossless compression
+    /// default: false
+    pub lossless: bool,
+    /// q: `i32` -> Quality factor
+    /// min: 0, max: 100, default: 75
+    pub q: i32,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
+    /// background: `Vec<f64>` -> Background value
+    pub background: Vec<f64>,
+    /// page_height: `i32` -> Set page height for multipage save
+    /// min: 0, max: 10000000, default: 0
+    pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
+}
+
+impl std::default::Default for JxlsaveOptions {
+    fn default() -> Self {
+        JxlsaveOptions {
+            tier: i32::from(0),
+            distance: f64::from(1),
+            effort: i32::from(7),
+            lossless: false,
+            q: i32::from(75),
+            keep: ForeignKeep::All,
+            background: Vec::new(),
+            page_height: i32::from(0),
+            profile: String::from("sRGB"),
+        }
+    }
+}
+
+/// VipsForeignSaveJxlFile (jxlsave), save image in JPEG-XL format (.jxl), priority=0, untrusted, any
+/// inp: `&VipsImage` -> Image to save
+/// filename: `&str` -> Filename to load from
+/// jxlsave_options: `&JxlsaveOptions` -> optional arguments
+
+pub fn jxlsave_with_opts(
+    inp: &VipsImage,
+    filename: &str,
+    jxlsave_options: &JxlsaveOptions,
+) -> Result<()> {
+    unsafe {
+        let inp_in: *mut bindings::VipsImage = inp.ctx;
+        let filename_in: CString = utils::new_c_string(filename)?;
+
+        let tier_in: i32 = jxlsave_options.tier;
+        let tier_in_name = utils::new_c_string("tier")?;
+
+        let distance_in: f64 = jxlsave_options.distance;
+        let distance_in_name = utils::new_c_string("distance")?;
+
+        let effort_in: i32 = jxlsave_options.effort;
+        let effort_in_name = utils::new_c_string("effort")?;
+
+        let lossless_in: i32 = if jxlsave_options.lossless { 1 } else { 0 };
+        let lossless_in_name = utils::new_c_string("lossless")?;
+
+        let q_in: i32 = jxlsave_options.q;
+        let q_in_name = utils::new_c_string("Q")?;
+
+        let keep_in: i32 = jxlsave_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
+
+        let background_wrapper =
+            utils::VipsArrayDoubleWrapper::from(&jxlsave_options.background[..]);
+        let background_in = background_wrapper.ctx;
+        let background_in_name = utils::new_c_string("background")?;
+
+        let page_height_in: i32 = jxlsave_options.page_height;
+        let page_height_in_name = utils::new_c_string("page-height")?;
+
+        let profile_in: CString = utils::new_c_string(&jxlsave_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
+        let vips_op_response = bindings::vips_jxlsave(
+            inp_in,
+            filename_in.as_ptr(),
+            tier_in_name.as_ptr(),
+            tier_in,
+            distance_in_name.as_ptr(),
+            distance_in,
+            effort_in_name.as_ptr(),
+            effort_in,
+            lossless_in_name.as_ptr(),
+            lossless_in,
+            q_in_name.as_ptr(),
+            q_in,
+            keep_in_name.as_ptr(),
+            keep_in,
+            background_in_name.as_ptr(),
+            background_in,
+            page_height_in_name.as_ptr(),
+            page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
+            NULL,
+        );
+        utils::result(vips_op_response, (), Error::JxlsaveError)
+    }
+}
+
+/// VipsForeignSaveJxlBuffer (jxlsave_buffer), save image in JPEG-XL format (.jxl), priority=0, untrusted, any
+/// inp: `&VipsImage` -> Image to save
+/// returns `Vec<u8>` - Buffer to save to
+pub fn jxlsave_buffer(inp: &VipsImage) -> Result<Vec<u8>> {
+    unsafe {
+        let inp_in: *mut bindings::VipsImage = inp.ctx;
+        let mut buffer_buf_size: u64 = 0;
+        let mut buffer_out: *mut c_void = null_mut();
+
+        let vips_op_response =
+            bindings::vips_jxlsave_buffer(inp_in, &mut buffer_out, &mut buffer_buf_size, NULL);
+        utils::result(
+            vips_op_response,
+            utils::new_byte_array(buffer_out, buffer_buf_size),
+            Error::JxlsaveBufferError,
+        )
+    }
+}
+
+/// Options for jxlsave_buffer operation
+#[derive(Clone, Debug)]
+pub struct JxlsaveBufferOptions {
+    /// tier: `i32` -> Decode speed tier
+    /// min: 0, max: 4, default: 0
+    pub tier: i32,
+    /// distance: `f64` -> Target butteraugli distance
+    /// min: 0, max: 25, default: 1
+    pub distance: f64,
+    /// effort: `i32` -> Encoding effort
+    /// min: 1, max: 9, default: 7
+    pub effort: i32,
+    /// lossless: `bool` -> Enable lossless compression
+    /// default: false
+    pub lossless: bool,
+    /// q: `i32` -> Quality factor
+    /// min: 0, max: 100, default: 75
+    pub q: i32,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
+    /// background: `Vec<f64>` -> Background value
+    pub background: Vec<f64>,
+    /// page_height: `i32` -> Set page height for multipage save
+    /// min: 0, max: 10000000, default: 0
+    pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
+}
+
+impl std::default::Default for JxlsaveBufferOptions {
+    fn default() -> Self {
+        JxlsaveBufferOptions {
+            tier: i32::from(0),
+            distance: f64::from(1),
+            effort: i32::from(7),
+            lossless: false,
+            q: i32::from(75),
+            keep: ForeignKeep::All,
+            background: Vec::new(),
+            page_height: i32::from(0),
+            profile: String::from("sRGB"),
+        }
+    }
+}
+
+/// VipsForeignSaveJxlBuffer (jxlsave_buffer), save image in JPEG-XL format (.jxl), priority=0, untrusted, any
+/// inp: `&VipsImage` -> Image to save
+/// jxlsave_buffer_options: `&JxlsaveBufferOptions` -> optional arguments
+/// returns `Vec<u8>` - Buffer to save to
+pub fn jxlsave_buffer_with_opts(
+    inp: &VipsImage,
+    jxlsave_buffer_options: &JxlsaveBufferOptions,
+) -> Result<Vec<u8>> {
+    unsafe {
+        let inp_in: *mut bindings::VipsImage = inp.ctx;
+        let mut buffer_buf_size: u64 = 0;
+        let mut buffer_out: *mut c_void = null_mut();
+
+        let tier_in: i32 = jxlsave_buffer_options.tier;
+        let tier_in_name = utils::new_c_string("tier")?;
+
+        let distance_in: f64 = jxlsave_buffer_options.distance;
+        let distance_in_name = utils::new_c_string("distance")?;
+
+        let effort_in: i32 = jxlsave_buffer_options.effort;
+        let effort_in_name = utils::new_c_string("effort")?;
+
+        let lossless_in: i32 = if jxlsave_buffer_options.lossless {
+            1
+        } else {
+            0
+        };
+        let lossless_in_name = utils::new_c_string("lossless")?;
+
+        let q_in: i32 = jxlsave_buffer_options.q;
+        let q_in_name = utils::new_c_string("Q")?;
+
+        let keep_in: i32 = jxlsave_buffer_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
+
+        let background_wrapper =
+            utils::VipsArrayDoubleWrapper::from(&jxlsave_buffer_options.background[..]);
+        let background_in = background_wrapper.ctx;
+        let background_in_name = utils::new_c_string("background")?;
+
+        let page_height_in: i32 = jxlsave_buffer_options.page_height;
+        let page_height_in_name = utils::new_c_string("page-height")?;
+
+        let profile_in: CString = utils::new_c_string(&jxlsave_buffer_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
+        let vips_op_response = bindings::vips_jxlsave_buffer(
+            inp_in,
+            &mut buffer_out,
+            &mut buffer_buf_size,
+            tier_in_name.as_ptr(),
+            tier_in,
+            distance_in_name.as_ptr(),
+            distance_in,
+            effort_in_name.as_ptr(),
+            effort_in,
+            lossless_in_name.as_ptr(),
+            lossless_in,
+            q_in_name.as_ptr(),
+            q_in,
+            keep_in_name.as_ptr(),
+            keep_in,
+            background_in_name.as_ptr(),
+            background_in,
+            page_height_in_name.as_ptr(),
+            page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
+            NULL,
+        );
+        utils::result(
+            vips_op_response,
+            utils::new_byte_array(buffer_out, buffer_buf_size),
+            Error::JxlsaveBufferError,
+        )
+    }
+}
+
+/// VipsForeignSaveJxlTarget (jxlsave_target), save image in JPEG-XL format (.jxl), priority=0, untrusted, any
+/// inp: `&VipsImage` -> Image to save
+/// target: `&VipsTarget` -> Target to save to
+
+pub fn jxlsave_target(inp: &VipsImage, target: &VipsTarget) -> Result<()> {
+    unsafe {
+        let inp_in: *mut bindings::VipsImage = inp.ctx;
+        let target_in: *mut bindings::VipsTarget = target.ctx;
+
+        let vips_op_response = bindings::vips_jxlsave_target(inp_in, target_in, NULL);
+        utils::result(vips_op_response, (), Error::JxlsaveTargetError)
+    }
+}
+
+/// Options for jxlsave_target operation
+#[derive(Clone, Debug)]
+pub struct JxlsaveTargetOptions {
+    /// tier: `i32` -> Decode speed tier
+    /// min: 0, max: 4, default: 0
+    pub tier: i32,
+    /// distance: `f64` -> Target butteraugli distance
+    /// min: 0, max: 25, default: 1
+    pub distance: f64,
+    /// effort: `i32` -> Encoding effort
+    /// min: 1, max: 9, default: 7
+    pub effort: i32,
+    /// lossless: `bool` -> Enable lossless compression
+    /// default: false
+    pub lossless: bool,
+    /// q: `i32` -> Quality factor
+    /// min: 0, max: 100, default: 75
+    pub q: i32,
+    /// keep: `ForeignKeep` -> Which metadata to retain
+    ///  `None` -> VIPS_FOREIGN_KEEP_NONE = 0
+    ///  `Exif` -> VIPS_FOREIGN_KEEP_EXIF = 1
+    ///  `Xmp` -> VIPS_FOREIGN_KEEP_XMP = 2
+    ///  `Iptc` -> VIPS_FOREIGN_KEEP_IPTC = 4
+    ///  `Icc` -> VIPS_FOREIGN_KEEP_ICC = 8
+    ///  `Other` -> VIPS_FOREIGN_KEEP_OTHER = 16
+    ///  `All` -> VIPS_FOREIGN_KEEP_ALL = 31 [DEFAULT]
+    pub keep: ForeignKeep,
+    /// background: `Vec<f64>` -> Background value
+    pub background: Vec<f64>,
+    /// page_height: `i32` -> Set page height for multipage save
+    /// min: 0, max: 10000000, default: 0
+    pub page_height: i32,
+    /// profile: `String` -> Filename of ICC profile to embed
+    pub profile: String,
+}
+
+impl std::default::Default for JxlsaveTargetOptions {
+    fn default() -> Self {
+        JxlsaveTargetOptions {
+            tier: i32::from(0),
+            distance: f64::from(1),
+            effort: i32::from(7),
+            lossless: false,
+            q: i32::from(75),
+            keep: ForeignKeep::All,
+            background: Vec::new(),
+            page_height: i32::from(0),
+            profile: String::from("sRGB"),
+        }
+    }
+}
+
+/// VipsForeignSaveJxlTarget (jxlsave_target), save image in JPEG-XL format (.jxl), priority=0, untrusted, any
+/// inp: `&VipsImage` -> Image to save
+/// target: `&VipsTarget` -> Target to save to
+/// jxlsave_target_options: `&JxlsaveTargetOptions` -> optional arguments
+
+pub fn jxlsave_target_with_opts(
+    inp: &VipsImage,
+    target: &VipsTarget,
+    jxlsave_target_options: &JxlsaveTargetOptions,
+) -> Result<()> {
+    unsafe {
+        let inp_in: *mut bindings::VipsImage = inp.ctx;
+        let target_in: *mut bindings::VipsTarget = target.ctx;
+
+        let tier_in: i32 = jxlsave_target_options.tier;
+        let tier_in_name = utils::new_c_string("tier")?;
+
+        let distance_in: f64 = jxlsave_target_options.distance;
+        let distance_in_name = utils::new_c_string("distance")?;
+
+        let effort_in: i32 = jxlsave_target_options.effort;
+        let effort_in_name = utils::new_c_string("effort")?;
+
+        let lossless_in: i32 = if jxlsave_target_options.lossless {
+            1
+        } else {
+            0
+        };
+        let lossless_in_name = utils::new_c_string("lossless")?;
+
+        let q_in: i32 = jxlsave_target_options.q;
+        let q_in_name = utils::new_c_string("Q")?;
+
+        let keep_in: i32 = jxlsave_target_options.keep as i32;
+        let keep_in_name = utils::new_c_string("keep")?;
+
+        let background_wrapper =
+            utils::VipsArrayDoubleWrapper::from(&jxlsave_target_options.background[..]);
+        let background_in = background_wrapper.ctx;
+        let background_in_name = utils::new_c_string("background")?;
+
+        let page_height_in: i32 = jxlsave_target_options.page_height;
+        let page_height_in_name = utils::new_c_string("page-height")?;
+
+        let profile_in: CString = utils::new_c_string(&jxlsave_target_options.profile)?;
+        let profile_in_name = utils::new_c_string("profile")?;
+
+        let vips_op_response = bindings::vips_jxlsave_target(
+            inp_in,
+            target_in,
+            tier_in_name.as_ptr(),
+            tier_in,
+            distance_in_name.as_ptr(),
+            distance_in,
+            effort_in_name.as_ptr(),
+            effort_in,
+            lossless_in_name.as_ptr(),
+            lossless_in,
+            q_in_name.as_ptr(),
+            q_in,
+            keep_in_name.as_ptr(),
+            keep_in,
+            background_in_name.as_ptr(),
+            background_in,
+            page_height_in_name.as_ptr(),
+            page_height_in,
+            profile_in_name.as_ptr(),
+            profile_in.as_ptr(),
+            NULL,
+        );
+        utils::result(vips_op_response, (), Error::JxlsaveTargetError)
     }
 }
 
@@ -19360,40 +24412,6 @@ pub fn yxy_2xyz(inp: &VipsImage) -> Result<VipsImage> {
     }
 }
 
-/// VipsscRGB2XYZ (scRGB2XYZ), transform scRGB to XYZ
-/// inp: `&VipsImage` -> Input image
-/// returns `VipsImage` - Output image
-pub fn sc_rgb2xyz(inp: &VipsImage) -> Result<VipsImage> {
-    unsafe {
-        let inp_in: *mut bindings::VipsImage = inp.ctx;
-        let mut out_out: *mut bindings::VipsImage = null_mut();
-
-        let vips_op_response = bindings::vips_scRGB2XYZ(inp_in, &mut out_out, NULL);
-        utils::result(
-            vips_op_response,
-            VipsImage { ctx: out_out },
-            Error::ScRgb2XyzError,
-        )
-    }
-}
-
-/// VipsXYZ2scRGB (XYZ2scRGB), transform XYZ to scRGB
-/// inp: `&VipsImage` -> Input image
-/// returns `VipsImage` - Output image
-pub fn xyz_2sc_rgb(inp: &VipsImage) -> Result<VipsImage> {
-    unsafe {
-        let inp_in: *mut bindings::VipsImage = inp.ctx;
-        let mut out_out: *mut bindings::VipsImage = null_mut();
-
-        let vips_op_response = bindings::vips_XYZ2scRGB(inp_in, &mut out_out, NULL);
-        utils::result(
-            vips_op_response,
-            VipsImage { ctx: out_out },
-            Error::Xyz2ScRgbError,
-        )
-    }
-}
-
 /// VipsLabQ2Lab (LabQ2Lab), unpack a LabQ image to float Lab
 /// inp: `&VipsImage` -> Input image
 /// returns `VipsImage` - Output image
@@ -19995,6 +25013,23 @@ pub fn s_rgb_2sc_rgb(inp: &VipsImage) -> Result<VipsImage> {
     }
 }
 
+/// VipsscRGB2XYZ (scRGB2XYZ), transform scRGB to XYZ
+/// inp: `&VipsImage` -> Input image
+/// returns `VipsImage` - Output image
+pub fn sc_rgb2xyz(inp: &VipsImage) -> Result<VipsImage> {
+    unsafe {
+        let inp_in: *mut bindings::VipsImage = inp.ctx;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let vips_op_response = bindings::vips_scRGB2XYZ(inp_in, &mut out_out, NULL);
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::ScRgb2XyzError,
+        )
+    }
+}
+
 /// VipsscRGB2BW (scRGB2BW), convert scRGB to BW
 /// inp: `&VipsImage` -> Input image
 /// returns `VipsImage` - Output image
@@ -20049,6 +25084,23 @@ pub fn sc_rgb2bw_with_opts(
             vips_op_response,
             VipsImage { ctx: out_out },
             Error::ScRgb2BwError,
+        )
+    }
+}
+
+/// VipsXYZ2scRGB (XYZ2scRGB), transform XYZ to scRGB
+/// inp: `&VipsImage` -> Input image
+/// returns `VipsImage` - Output image
+pub fn xyz_2sc_rgb(inp: &VipsImage) -> Result<VipsImage> {
+    unsafe {
+        let inp_in: *mut bindings::VipsImage = inp.ctx;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let vips_op_response = bindings::vips_XYZ2scRGB(inp_in, &mut out_out, NULL);
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::Xyz2ScRgbError,
         )
     }
 }
@@ -20927,7 +25979,7 @@ pub fn compass_with_opts(
     }
 }
 
-/// VipsConvsep (convsep), seperable convolution operation
+/// VipsConvsep (convsep), separable convolution operation
 /// inp: `&VipsImage` -> Input image argument
 /// mask: `&VipsImage` -> Input matrix image
 /// returns `VipsImage` - Output image
@@ -20973,7 +26025,7 @@ impl std::default::Default for ConvsepOptions {
     }
 }
 
-/// VipsConvsep (convsep), seperable convolution operation
+/// VipsConvsep (convsep), separable convolution operation
 /// inp: `&VipsImage` -> Input image argument
 /// mask: `&VipsImage` -> Input matrix image
 /// convsep_options: `&ConvsepOptions` -> optional arguments
@@ -21145,7 +26197,7 @@ pub fn sharpen(inp: &VipsImage) -> Result<VipsImage> {
 #[derive(Clone, Debug)]
 pub struct SharpenOptions {
     /// sigma: `f64` -> Sigma of Gaussian
-    /// min: 0.000001, max: 10000, default: 0.5
+    /// min: 0.000001, max: 10, default: 0.5
     pub sigma: f64,
     /// x_1: `f64` -> Flat/jaggy threshold
     /// min: 0, max: 1000000, default: 2
@@ -21312,6 +26364,57 @@ pub fn gaussblur_with_opts(
     }
 }
 
+/// VipsSobel (sobel), Sobel edge detector
+/// inp: `&VipsImage` -> Input image
+/// returns `VipsImage` - Output image
+pub fn sobel(inp: &VipsImage) -> Result<VipsImage> {
+    unsafe {
+        let inp_in: *mut bindings::VipsImage = inp.ctx;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let vips_op_response = bindings::vips_sobel(inp_in, &mut out_out, NULL);
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::SobelError,
+        )
+    }
+}
+
+/// VipsScharr (scharr), Scharr edge detector
+/// inp: `&VipsImage` -> Input image
+/// returns `VipsImage` - Output image
+pub fn scharr(inp: &VipsImage) -> Result<VipsImage> {
+    unsafe {
+        let inp_in: *mut bindings::VipsImage = inp.ctx;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let vips_op_response = bindings::vips_scharr(inp_in, &mut out_out, NULL);
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::ScharrError,
+        )
+    }
+}
+
+/// VipsPrewitt (prewitt), Prewitt edge detector
+/// inp: `&VipsImage` -> Input image
+/// returns `VipsImage` - Output image
+pub fn prewitt(inp: &VipsImage) -> Result<VipsImage> {
+    unsafe {
+        let inp_in: *mut bindings::VipsImage = inp.ctx;
+        let mut out_out: *mut bindings::VipsImage = null_mut();
+
+        let vips_op_response = bindings::vips_prewitt(inp_in, &mut out_out, NULL);
+        utils::result(
+            vips_op_response,
+            VipsImage { ctx: out_out },
+            Error::PrewittError,
+        )
+    }
+}
+
 /// VipsCanny (canny), Canny edge detector
 /// inp: `&VipsImage` -> Input image
 /// returns `VipsImage` - Output image
@@ -21380,23 +26483,6 @@ pub fn canny_with_opts(inp: &VipsImage, canny_options: &CannyOptions) -> Result<
             vips_op_response,
             VipsImage { ctx: out_out },
             Error::CannyError,
-        )
-    }
-}
-
-/// VipsSobel (sobel), Sobel edge detector
-/// inp: `&VipsImage` -> Input image
-/// returns `VipsImage` - Output image
-pub fn sobel(inp: &VipsImage) -> Result<VipsImage> {
-    unsafe {
-        let inp_in: *mut bindings::VipsImage = inp.ctx;
-        let mut out_out: *mut bindings::VipsImage = null_mut();
-
-        let vips_op_response = bindings::vips_sobel(inp_in, &mut out_out, NULL);
-        utils::result(
-            vips_op_response,
-            VipsImage { ctx: out_out },
-            Error::SobelError,
         )
     }
 }

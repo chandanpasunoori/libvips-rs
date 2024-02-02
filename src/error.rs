@@ -130,23 +130,41 @@ pub enum Error {
     RadloadSourceError,
     SvgloadError,
     SvgloadBufferError,
+    SvgloadSourceError,
+    Jp2KloadError,
+    Jp2KloadBufferError,
+    Jp2KloadSourceError,
     GifloadError,
     GifloadBufferError,
     GifloadSourceError,
     PngloadError,
     PngloadBufferError,
     PngloadSourceError,
+    MatloadError,
     JpegloadError,
     JpegloadBufferError,
+    JpegloadSourceError,
     WebploadError,
     WebploadBufferError,
     WebploadSourceError,
     TiffloadError,
     TiffloadBufferError,
     TiffloadSourceError,
+    FitsloadError,
+    OpenexrloadError,
     HeifloadError,
     HeifloadBufferError,
     HeifloadSourceError,
+    MagickloadError,
+    MagickloadBufferError,
+    PdfloadError,
+    PdfloadBufferError,
+    PdfloadSourceError,
+    OpenslideloadError,
+    OpenslideloadSourceError,
+    JxlloadError,
+    JxlloadBufferError,
+    JxlloadSourceError,
     CsvsaveError,
     CsvsaveTargetError,
     MatrixsaveError,
@@ -161,10 +179,14 @@ pub enum Error {
     RadsaveError,
     RadsaveBufferError,
     RadsaveTargetError,
+    Jp2KsaveError,
+    Jp2KsaveBufferError,
+    Jp2KsaveTargetError,
     GifsaveError,
     GifsaveBufferError,
     GifsaveTargetError,
     DzsaveError,
+    DzsaveBufferError,
     DzsaveTargetError,
     PngsaveError,
     PngsaveBufferError,
@@ -176,12 +198,19 @@ pub enum Error {
     WebpsaveError,
     WebpsaveBufferError,
     WebpsaveTargetError,
+    WebpsaveMimeError,
     TiffsaveError,
     TiffsaveBufferError,
     TiffsaveTargetError,
+    FitssaveError,
     HeifsaveError,
     HeifsaveBufferError,
     HeifsaveTargetError,
+    MagicksaveError,
+    MagicksaveBufferError,
+    JxlsaveError,
+    JxlsaveBufferError,
+    JxlsaveTargetError,
     ThumbnailError,
     ThumbnailBufferError,
     ThumbnailImageError,
@@ -207,8 +236,6 @@ pub enum Error {
     Cmc2LChError,
     Xyz2YxyError,
     Yxy2XyzError,
-    ScRgb2XyzError,
-    Xyz2ScRgbError,
     LabQ2LabError,
     Lab2LabQError,
     LabQ2LabSError,
@@ -227,7 +254,9 @@ pub enum Error {
     DE00Error,
     DEcmcError,
     SRgb2ScRgbError,
+    ScRgb2XyzError,
     ScRgb2BwError,
+    Xyz2ScRgbError,
     ScRgb2SRgbError,
     Cmyk2XyzError,
     Xyz2CmykError,
@@ -254,8 +283,10 @@ pub enum Error {
     SpcorError,
     SharpenError,
     GaussblurError,
-    CannyError,
     SobelError,
+    ScharrError,
+    PrewittError,
+    CannyError,
     FwfftError,
     InvfftError,
     FreqmultError,
@@ -793,6 +824,22 @@ impl std::fmt::Display for Error {
                 f,
                 "vips error: SvgloadBufferError. Check error buffer for more details"
             ),
+            Error::SvgloadSourceError => write!(
+                f,
+                "vips error: SvgloadSourceError. Check error buffer for more details"
+            ),
+            Error::Jp2KloadError => write!(
+                f,
+                "vips error: Jp2KloadError. Check error buffer for more details"
+            ),
+            Error::Jp2KloadBufferError => write!(
+                f,
+                "vips error: Jp2KloadBufferError. Check error buffer for more details"
+            ),
+            Error::Jp2KloadSourceError => write!(
+                f,
+                "vips error: Jp2KloadSourceError. Check error buffer for more details"
+            ),
             Error::GifloadError => write!(
                 f,
                 "vips error: GifloadError. Check error buffer for more details"
@@ -817,6 +864,10 @@ impl std::fmt::Display for Error {
                 f,
                 "vips error: PngloadSourceError. Check error buffer for more details"
             ),
+            Error::MatloadError => write!(
+                f,
+                "vips error: MatloadError. Check error buffer for more details"
+            ),
             Error::JpegloadError => write!(
                 f,
                 "vips error: JpegloadError. Check error buffer for more details"
@@ -824,6 +875,10 @@ impl std::fmt::Display for Error {
             Error::JpegloadBufferError => write!(
                 f,
                 "vips error: JpegloadBufferError. Check error buffer for more details"
+            ),
+            Error::JpegloadSourceError => write!(
+                f,
+                "vips error: JpegloadSourceError. Check error buffer for more details"
             ),
             Error::WebploadError => write!(
                 f,
@@ -849,6 +904,14 @@ impl std::fmt::Display for Error {
                 f,
                 "vips error: TiffloadSourceError. Check error buffer for more details"
             ),
+            Error::FitsloadError => write!(
+                f,
+                "vips error: FitsloadError. Check error buffer for more details"
+            ),
+            Error::OpenexrloadError => write!(
+                f,
+                "vips error: OpenexrloadError. Check error buffer for more details"
+            ),
             Error::HeifloadError => write!(
                 f,
                 "vips error: HeifloadError. Check error buffer for more details"
@@ -860,6 +923,46 @@ impl std::fmt::Display for Error {
             Error::HeifloadSourceError => write!(
                 f,
                 "vips error: HeifloadSourceError. Check error buffer for more details"
+            ),
+            Error::MagickloadError => write!(
+                f,
+                "vips error: MagickloadError. Check error buffer for more details"
+            ),
+            Error::MagickloadBufferError => write!(
+                f,
+                "vips error: MagickloadBufferError. Check error buffer for more details"
+            ),
+            Error::PdfloadError => write!(
+                f,
+                "vips error: PdfloadError. Check error buffer for more details"
+            ),
+            Error::PdfloadBufferError => write!(
+                f,
+                "vips error: PdfloadBufferError. Check error buffer for more details"
+            ),
+            Error::PdfloadSourceError => write!(
+                f,
+                "vips error: PdfloadSourceError. Check error buffer for more details"
+            ),
+            Error::OpenslideloadError => write!(
+                f,
+                "vips error: OpenslideloadError. Check error buffer for more details"
+            ),
+            Error::OpenslideloadSourceError => write!(
+                f,
+                "vips error: OpenslideloadSourceError. Check error buffer for more details"
+            ),
+            Error::JxlloadError => write!(
+                f,
+                "vips error: JxlloadError. Check error buffer for more details"
+            ),
+            Error::JxlloadBufferError => write!(
+                f,
+                "vips error: JxlloadBufferError. Check error buffer for more details"
+            ),
+            Error::JxlloadSourceError => write!(
+                f,
+                "vips error: JxlloadSourceError. Check error buffer for more details"
             ),
             Error::CsvsaveError => write!(
                 f,
@@ -917,6 +1020,18 @@ impl std::fmt::Display for Error {
                 f,
                 "vips error: RadsaveTargetError. Check error buffer for more details"
             ),
+            Error::Jp2KsaveError => write!(
+                f,
+                "vips error: Jp2KsaveError. Check error buffer for more details"
+            ),
+            Error::Jp2KsaveBufferError => write!(
+                f,
+                "vips error: Jp2KsaveBufferError. Check error buffer for more details"
+            ),
+            Error::Jp2KsaveTargetError => write!(
+                f,
+                "vips error: Jp2KsaveTargetError. Check error buffer for more details"
+            ),
             Error::GifsaveError => write!(
                 f,
                 "vips error: GifsaveError. Check error buffer for more details"
@@ -932,6 +1047,10 @@ impl std::fmt::Display for Error {
             Error::DzsaveError => write!(
                 f,
                 "vips error: DzsaveError. Check error buffer for more details"
+            ),
+            Error::DzsaveBufferError => write!(
+                f,
+                "vips error: DzsaveBufferError. Check error buffer for more details"
             ),
             Error::DzsaveTargetError => write!(
                 f,
@@ -977,6 +1096,10 @@ impl std::fmt::Display for Error {
                 f,
                 "vips error: WebpsaveTargetError. Check error buffer for more details"
             ),
+            Error::WebpsaveMimeError => write!(
+                f,
+                "vips error: WebpsaveMimeError. Check error buffer for more details"
+            ),
             Error::TiffsaveError => write!(
                 f,
                 "vips error: TiffsaveError. Check error buffer for more details"
@@ -989,6 +1112,10 @@ impl std::fmt::Display for Error {
                 f,
                 "vips error: TiffsaveTargetError. Check error buffer for more details"
             ),
+            Error::FitssaveError => write!(
+                f,
+                "vips error: FitssaveError. Check error buffer for more details"
+            ),
             Error::HeifsaveError => write!(
                 f,
                 "vips error: HeifsaveError. Check error buffer for more details"
@@ -1000,6 +1127,26 @@ impl std::fmt::Display for Error {
             Error::HeifsaveTargetError => write!(
                 f,
                 "vips error: HeifsaveTargetError. Check error buffer for more details"
+            ),
+            Error::MagicksaveError => write!(
+                f,
+                "vips error: MagicksaveError. Check error buffer for more details"
+            ),
+            Error::MagicksaveBufferError => write!(
+                f,
+                "vips error: MagicksaveBufferError. Check error buffer for more details"
+            ),
+            Error::JxlsaveError => write!(
+                f,
+                "vips error: JxlsaveError. Check error buffer for more details"
+            ),
+            Error::JxlsaveBufferError => write!(
+                f,
+                "vips error: JxlsaveBufferError. Check error buffer for more details"
+            ),
+            Error::JxlsaveTargetError => write!(
+                f,
+                "vips error: JxlsaveTargetError. Check error buffer for more details"
             ),
             Error::ThumbnailError => write!(
                 f,
@@ -1101,14 +1248,6 @@ impl std::fmt::Display for Error {
                 f,
                 "vips error: Yxy2XyzError. Check error buffer for more details"
             ),
-            Error::ScRgb2XyzError => write!(
-                f,
-                "vips error: ScRgb2XyzError. Check error buffer for more details"
-            ),
-            Error::Xyz2ScRgbError => write!(
-                f,
-                "vips error: Xyz2ScRgbError. Check error buffer for more details"
-            ),
             Error::LabQ2LabError => write!(
                 f,
                 "vips error: LabQ2LabError. Check error buffer for more details"
@@ -1181,9 +1320,17 @@ impl std::fmt::Display for Error {
                 f,
                 "vips error: SRgb2ScRgbError. Check error buffer for more details"
             ),
+            Error::ScRgb2XyzError => write!(
+                f,
+                "vips error: ScRgb2XyzError. Check error buffer for more details"
+            ),
             Error::ScRgb2BwError => write!(
                 f,
                 "vips error: ScRgb2BwError. Check error buffer for more details"
+            ),
+            Error::Xyz2ScRgbError => write!(
+                f,
+                "vips error: Xyz2ScRgbError. Check error buffer for more details"
             ),
             Error::ScRgb2SRgbError => write!(
                 f,
@@ -1289,13 +1436,21 @@ impl std::fmt::Display for Error {
                 f,
                 "vips error: GaussblurError. Check error buffer for more details"
             ),
-            Error::CannyError => write!(
-                f,
-                "vips error: CannyError. Check error buffer for more details"
-            ),
             Error::SobelError => write!(
                 f,
                 "vips error: SobelError. Check error buffer for more details"
+            ),
+            Error::ScharrError => write!(
+                f,
+                "vips error: ScharrError. Check error buffer for more details"
+            ),
+            Error::PrewittError => write!(
+                f,
+                "vips error: PrewittError. Check error buffer for more details"
+            ),
+            Error::CannyError => write!(
+                f,
+                "vips error: CannyError. Check error buffer for more details"
             ),
             Error::FwfftError => write!(
                 f,
