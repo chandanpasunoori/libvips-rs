@@ -1174,15 +1174,12 @@ fn rustfmt_generated_strin(source: &str) -> io::Result<String> {
 
 fn main() {
     let operation_blacklist = vec![
-        // "VipsForeignSaveDzBuffer",
         "crop",
         "VipsLinear",
         "VipsGetpoint",
         "VipsCase",
         // TODO: remove after a new version from libvips is generated including those functions in the C library
-        // "VipsForeignLoadJpegSource",
-        "VipsForeignLoadFitsSource",
-        // "VipsForeignLoadSvgSource",
+        "VipsForeignLoadFitsSource"
     ];
 
     println!("cargo:rustc-link-lib=vips");
