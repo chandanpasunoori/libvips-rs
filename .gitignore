@@ -5,4 +5,7 @@
 generator/target
 generator/introspect
 *.dSYM
-.idea
+package-lock.json
+node_modules/
+yarn.lock
+yarn-error.log

@@ -1,4 +1,4 @@
-// (c) Copyright 2019-2023 MIT
+// (c) Copyright 2019-2025 MIT
 /* vips8 introspection
  *
  * compile with:

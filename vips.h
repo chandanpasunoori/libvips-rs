@@ -1,2 +1,2 @@
-// (c) Copyright 2019-2023 MIT
+// (c) Copyright 2019-2025 MIT
 #include <vips/vips.h>

@@ -1,5 +1,5 @@
 # libvips-rust-bindings
-Rust bindings for libvips. Generated from `version 8.14.2`.
+Rust bindings for libvips. Generated from `version 8.18.0`.
 
 This is a safe wrapper for [libvips](https://libvips.github.io/libvips/) C library. It is made on top of the C API and based on the introspection API results.
 
@@ -21,6 +21,10 @@ Everything in ops.rs and error.rs (and of course bindings.rs) is generated progr
 $ ./build.sh     # Builds the libvips-builder docker image
 $ ./generate.sh  # Actually generates the bindings
 ```
+
+## A note to the maintainers
+
+The publication of the create is done manually and requires that the _Cargo.lock_ version be updated in the repo after this has been done. This can be changed once github actions have been added to the repo in order to publish after merge.
 
 ## How to use it
 
@@ -60,7 +64,7 @@ fn main() {
     // loads an image from file
     let image = VipsImage::new_from_file("test.png").unwrap();
 
-    // will resized the image and return a new instance.
+    // will resize the image and return a new instance.
     // libvips works most of the time with immutable objects, so it will return a new object
     // the VipsImage struct implements Drop, which will free the memory
     let resized = ops::resize(&image, 0.5).unwrap();
