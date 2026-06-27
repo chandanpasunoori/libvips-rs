@@ -73,15 +73,17 @@ impl From<&[VipsImage]> for VipsArrayImageWrapper {
     #[inline]
     fn from(array: &[VipsImage]) -> Self {
         let len = array.len() as i32;
-        let as_vips = array
+        // `ptrs` must outlive the call: vips_array_image_new copies the pointer
+        // array (and refs each image), so a temporary Vec dropped before the
+        // call would leave `as_mut_ptr()` dangling (read of freed memory).
+        let mut ptrs = array
             .iter()
             .map(|v| v.ctx)
-            .collect::<Vec<_>>()
-            .as_mut_ptr();
+            .collect::<Vec<_>>();
         VipsArrayImageWrapper {
             ctx: unsafe {
                 bindings::vips_array_image_new(
-                    as_vips,
+                    ptrs.as_mut_ptr(),
                     len,
                 )
             },
@@ -103,31 +105,50 @@ pub(crate) fn new_c_string(string: &str) -> Result<CString> {
     CString::new(string).map_err(|_| Error::InitializationError("Error initializing C string."))
 }
 
+// These helpers take ownership of a buffer/array that libvips allocated with
+// GLib (g_malloc). They COPY the contents into a Rust-owned Vec and then free
+// the original with g_free. Wrapping the C pointer directly in a Vec (via
+// Vec::from_raw_parts) is undefined behavior: the Vec would free GLib memory
+// with the Rust global allocator (corruption under jemalloc/mimalloc) and
+// bypass vips' tracked-memory accounting. Copy-then-g_free is allocator-safe.
 #[inline]
 pub(crate) unsafe fn new_byte_array(buf: *mut c_void, size: u64) -> Vec<u8> {
-    Vec::from_raw_parts(
-        buf as *mut u8,
-        size as usize,
+    if buf.is_null() {
+        return Vec::new();
+    }
+    let out = std::slice::from_raw_parts(
+        buf as *const u8,
         size as usize,
     )
+    .to_vec();
+    bindings::g_free(buf);
+    out
 }
 
 #[inline]
 pub unsafe fn new_int_array(array: *mut i32, size: u64) -> Vec<i32> {
-    Vec::from(
-        std::slice::from_raw_parts(
-            array as *mut i32,
-            size as usize,
-        ),
+    if array.is_null() {
+        return Vec::new();
+    }
+    let out = std::slice::from_raw_parts(
+        array as *const i32,
+        size as usize,
     )
+    .to_vec();
+    bindings::g_free(array as *mut c_void);
+    out
 }
 
 #[inline]
 pub unsafe fn new_double_array(array: *mut f64, size: u64) -> Vec<f64> {
-    Vec::from(
-        std::slice::from_raw_parts(
-            array as *mut f64,
-            size as usize,
-        ),
+    if array.is_null() {
+        return Vec::new();
+    }
+    let out = std::slice::from_raw_parts(
+        array as *const f64,
+        size as usize,
     )
+    .to_vec();
+    bindings::g_free(array as *mut c_void);
+    out
 }

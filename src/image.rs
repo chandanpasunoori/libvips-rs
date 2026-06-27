@@ -13,34 +13,107 @@ use std::ptr::null_mut;
 
 const NULL: *const c_void = null_mut();
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct VipsImage {
     pub(crate) ctx: *mut bindings::VipsImage,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct VipsInterpolate {
     pub(crate) ctx: *mut bindings::VipsInterpolate,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct VipsBlob {
     pub(crate) ctx: *mut bindings::VipsBlob,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct VipsConnection {
     pub(crate) ctx: *mut bindings::VipsConnection,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct VipsSource {
     pub(crate) ctx: *mut bindings::VipsSource,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct VipsTarget {
     pub(crate) ctx: *mut bindings::VipsTarget,
+}
+
+// `VipsImage` and friends own a single GObject/VipsArea reference that `Drop`
+// releases. A derived `Clone` would bit-copy the raw pointer without taking a
+// reference, so dropping both copies double-unrefs (use-after-free). These
+// manual impls take a real reference so the refcount matches the wrapper count.
+impl Clone for VipsImage {
+    fn clone(&self) -> Self {
+        unsafe {
+            if !self.ctx.is_null() {
+                bindings::g_object_ref(self.ctx as *mut c_void);
+            }
+        }
+        VipsImage { ctx: self.ctx }
+    }
+}
+
+impl Clone for VipsInterpolate {
+    fn clone(&self) -> Self {
+        unsafe {
+            if !self.ctx.is_null() {
+                bindings::g_object_ref(self.ctx as *mut c_void);
+            }
+        }
+        VipsInterpolate { ctx: self.ctx }
+    }
+}
+
+impl Clone for VipsConnection {
+    fn clone(&self) -> Self {
+        unsafe {
+            if !self.ctx.is_null() {
+                bindings::g_object_ref(self.ctx as *mut c_void);
+            }
+        }
+        VipsConnection { ctx: self.ctx }
+    }
+}
+
+impl Clone for VipsSource {
+    fn clone(&self) -> Self {
+        unsafe {
+            if !self.ctx.is_null() {
+                bindings::g_object_ref(self.ctx as *mut c_void);
+            }
+        }
+        VipsSource { ctx: self.ctx }
+    }
+}
+
+impl Clone for VipsTarget {
+    fn clone(&self) -> Self {
+        unsafe {
+            if !self.ctx.is_null() {
+                bindings::g_object_ref(self.ctx as *mut c_void);
+            }
+        }
+        VipsTarget { ctx: self.ctx }
+    }
+}
+
+impl Clone for VipsBlob {
+    fn clone(&self) -> Self {
+        VipsBlob {
+            ctx: unsafe {
+                if self.ctx.is_null() {
+                    null_mut()
+                } else {
+                    bindings::vips_area_copy(self.ctx as *mut bindings::VipsArea) as *mut bindings::VipsBlob
+                }
+            },
+        }
+    }
 }
 
 /// This is the main type of vips. It represents an image and most operations will take one as input and output a new one.
@@ -423,16 +496,16 @@ impl VipsImage {
 
     pub fn image_write(&self) -> Result<VipsImage> {
         unsafe {
-            let out: *mut bindings::VipsImage = null_mut();
+            // vips_image_write's second argument is a caller-created DESTINATION
+            // image, not an out-param. Passing NULL made vips dereference NULL.
+            let out = VipsImage::new_memory()?;
             let res = bindings::vips_image_write(
                 self.ctx,
-                out,
+                out.ctx,
             );
             utils::result(
                 res,
-                VipsImage {
-                    ctx: out,
-                },
+                out,
                 Error::IOError("Cannot write input to output"),
             )
         }
@@ -528,8 +601,11 @@ impl VipsImage {
                 self.ctx,
                 &mut buffer_buf_size,
             );
+            if buffer_out.is_null() {
+                return Vec::new();
+            }
             let buf = std::slice::from_raw_parts(
-                buffer_out as *mut u8,
+                buffer_out as *const u8,
                 buffer_buf_size as usize,
             )
             .to_vec();
@@ -724,18 +800,14 @@ impl VipsSource {
 
     pub fn read(&mut self, length: u64) -> Result<Vec<u8>> {
         unsafe {
-            let bytes: *mut c_void = null_mut();
+            let mut buffer = vec![0u8; length as usize];
             let result = bindings::vips_source_read(
                 self.ctx,
-                bytes,
+                buffer.as_mut_ptr() as *mut c_void,
                 length,
             );
             if result != -1 {
-                let buffer = Vec::from_raw_parts(
-                    bytes as *mut u8,
-                    result as usize,
-                    result as usize,
-                );
+                buffer.truncate(result as usize);
                 Ok(buffer)
             } else {
                 Err(Error::OperationError("Error on vips read"))
@@ -788,20 +860,24 @@ impl VipsSource {
 impl<'a> VipsSource {
     pub fn map(&'a self) -> Result<&'a [u8]> {
         unsafe {
-            let length: *mut u64 = null_mut();
+            // `length` must be a real out-param; passing NULL made vips_source_map
+            // write the length through a NULL pointer (crash) and the old
+            // `length.is_null()` guard was always true. The returned slice borrows
+            // the source-owned mapping (lifetime-tied to &self), so it is not freed.
+            let mut length: u64 = 0;
             let result = bindings::vips_source_map(
                 self.ctx,
-                length,
+                &mut length,
             );
-            if length.is_null() {
+            if result.is_null() {
                 Err(Error::OperationError("Error on vips map"))
             } else {
-                let size = (*length)
+                let size = length
                     .try_into()
                     .map_err(|_| Error::OperationError("Can't get size of array"))?;
                 Ok(
                     std::slice::from_raw_parts(
-                        result as *mut u8,
+                        result as *const u8,
                         size,
                     ),
                 )
@@ -960,26 +1036,31 @@ unsafe fn vips_target_result(res: *mut bindings::VipsTarget, err: Error) -> Resu
 impl VipsInterpolate {
     /// defaults to vips_interpolate_nearest_static
     pub fn new() -> VipsInterpolate {
+        // vips_interpolate_*_static() return a BORROWED reference to a process-wide
+        // singleton ("no need to unref"). Our Drop unconditionally g_object_unref's,
+        // so we must take our own reference here; otherwise create+drop of a default
+        // interpolator drives the singleton's refcount to 0 and frees it, leaving
+        // libvips' cached pointer dangling (use-after-free on the next call).
         unsafe {
-            VipsInterpolate {
-                ctx: bindings::vips_interpolate_nearest_static(),
-            }
+            let ctx = bindings::vips_interpolate_nearest_static();
+            bindings::g_object_ref(ctx as *mut c_void);
+            VipsInterpolate { ctx }
         }
     }
 
     pub fn new_from_neasest_static() -> VipsInterpolate {
         unsafe {
-            VipsInterpolate {
-                ctx: bindings::vips_interpolate_nearest_static(),
-            }
+            let ctx = bindings::vips_interpolate_nearest_static();
+            bindings::g_object_ref(ctx as *mut c_void);
+            VipsInterpolate { ctx }
         }
     }
 
     pub fn new_from_bilinear_static() -> VipsInterpolate {
         unsafe {
-            VipsInterpolate {
-                ctx: bindings::vips_interpolate_bilinear_static(),
-            }
+            let ctx = bindings::vips_interpolate_bilinear_static();
+            bindings::g_object_ref(ctx as *mut c_void);
+            VipsInterpolate { ctx }
         }
     }
 
@@ -1045,7 +1126,9 @@ impl Drop for VipsBlob {
                 .ctx
                 .is_null()
             {
-                bindings::g_object_unref(self.ctx as *mut c_void);
+                // VipsBlob is a VipsArea (boxed/refcounted), NOT a GObject;
+                // it must be released with vips_area_unref, not g_object_unref.
+                bindings::vips_area_unref(self.ctx as *mut bindings::VipsArea);
             }
         }
     }
@@ -1093,16 +1176,22 @@ impl Drop for VipsTarget {
 impl Into<Vec<u8>> for VipsBlob {
     fn into(self) -> Vec<u8> {
         unsafe {
+            if self.ctx.is_null() {
+                return Vec::new();
+            }
             let mut size: u64 = 0;
             let bytes = bindings::vips_blob_get(
                 self.ctx,
                 &mut size,
             );
-            Vec::from_raw_parts(
-                bytes as *mut u8,
-                size as usize,
-                size as usize,
-            )
+            if bytes.is_null() || size == 0 {
+                return Vec::new();
+            }
+            // Copy out of the blob-owned buffer; `self` is dropped here, and its
+            // Drop (vips_area_unref) frees the blob and its data exactly once.
+            // Taking ownership via Vec::from_raw_parts would double-free that
+            // buffer and free GLib memory with the Rust allocator.
+            std::slice::from_raw_parts(bytes as *const u8, size as usize).to_vec()
         }
     }
 }
